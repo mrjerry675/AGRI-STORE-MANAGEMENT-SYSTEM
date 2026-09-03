@@ -36,6 +36,9 @@ const todayISO = () => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// for names passed as 'string' arguments inside onclick="…" — an apostrophe in the
+// name would otherwise end the JS string when the browser decodes the attribute
+const jsq = s => esc(String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
 const badge = cat => `<span class="badge badge-${esc(cat)}">${esc(cat)}</span>`;
 
 const PAY_EMOJI = {
@@ -489,7 +492,7 @@ function renderProducts() {
       <td class="r ${p.remaining <= 0 ? 'red' : 'b'}">${qty(p.remaining)} ${esc(p.unit)}</td>
       <td class="r">${rs(p.avgCost)}</td>
       <td class="r ${p.salePrice > 0 && p.salePrice < p.avgCost ? 'red' : 'b'}">${p.salePrice > 0 ? rs(p.salePrice) : '—'}</td>
-      <td><button class="edit-btn" onclick="editProduct(${p.id})" title="Edit">✏️</button><button class="del-btn" onclick="delProduct(${p.id}, '${esc(p.name)}')">🗑️</button></td>
+      <td><button class="edit-btn" onclick="editProduct(${p.id})" title="Edit">✏️</button><button class="del-btn" onclick="delProduct(${p.id}, '${jsq(p.name)}')">🗑️</button></td>
     </tr>`).join('') : `<tr><td colspan="9" class="empty-row">${productSearchTerm
       ? 'No product matching "' + esc(productSearchTerm) + '"'
       : productFilter
@@ -545,7 +548,7 @@ $('productForm').addEventListener('submit', async ev => {
 
 async function delProduct(id, name) {
   if (!(await uiConfirm('Delete Product?',
-    `Delete <b>"${esc(name)}"</b> and ALL its purchases &amp; sales?<br>This cannot be undone.`))) return;
+    `Delete <b>"${esc(name)}"</b> and ALL its purchases, sales &amp; partner investments?<br>This cannot be undone.`))) return;
   try { await api('/api/products/' + id, { method: 'DELETE' }); toast('Product deleted'); refreshCurrentPage(); }
   catch (e) { toast(e.message, true); }
 }
@@ -677,7 +680,7 @@ function renderPurchases() {
       <td class="r">${rs(r.paid)}</td>
       <td class="r">${r.remaining > 0.001
         ? `<span class="due">${rs(r.remaining)}</span>
-           <button class="pay-btn" onclick="openPay('purchases', ${r.id}, '${esc(r.name)}', ${r.remaining})">💰 Pay</button>`
+           <button class="pay-btn" onclick="openPay('purchases', ${r.id}, '${jsq(r.name)}', ${r.remaining})">💰 Pay</button>`
         : '<span class="paid-ok">✓ Paid</span>'}</td>
       <td>${isAdmin() ? `<button class="del-btn" onclick="delPurchase(${r.id})">🗑️</button>` : ''}</td>
     </tr>`).join('') : `<tr><td colspan="9" class="empty-row">${purchaseSearchTerm
@@ -787,7 +790,7 @@ function renderSales() {
       <td class="r">${rs(r.paidNet)}</td>
       <td class="r">${r.remaining > 0.001
         ? `<span class="due">${rs(r.remaining)}</span>
-           <button class="pay-btn" onclick="openPay('sales', ${r.id}, '${esc(r.customer_name) || esc(r.name)}', ${r.remaining})">💰 Receive</button>`
+           <button class="pay-btn" onclick="openPay('sales', ${r.id}, '${jsq(r.customer_name) || jsq(r.name)}', ${r.remaining})">💰 Receive</button>`
         : '<span class="paid-ok">✓ Paid</span>'}</td>
       <td>${payLabel(r.payment)}</td>
       <td>${esc(r.customer_name)}</td>
@@ -1530,9 +1533,9 @@ async function loadPartners() {
       <div class="partner-head">
         <div class="partner-name">🤝 ${esc(p.name)}</div>
         <span>
-          <button class="edit-name-btn" onclick="renamePartner(${p.id}, '${esc(p.name)}')" title="Edit name">✏️</button>
-          <button class="edit-name-btn" onclick="markPartnerLeft(${p.id}, '${esc(p.name)}')" title="Partner leaves — keep their history">👋</button>
-          <button class="edit-name-btn" onclick="delPartner(${p.id}, '${esc(p.name)}')" title="Delete (mistakes only — removes history)">🗑️</button>
+          <button class="edit-name-btn" onclick="renamePartner(${p.id}, '${jsq(p.name)}')" title="Edit name">✏️</button>
+          <button class="edit-name-btn" onclick="markPartnerLeft(${p.id}, '${jsq(p.name)}')" title="Partner leaves — keep their history">👋</button>
+          <button class="edit-name-btn" onclick="delPartner(${p.id}, '${jsq(p.name)}')" title="Delete (mistakes only — removes history)">🗑️</button>
         </span>
       </div>
       <div class="partner-stats">
@@ -1880,8 +1883,8 @@ async function loadStaffList() {
   $('staffList').innerHTML = users.map(u => `<div class="rank-item">
     <span><b>${esc(u.username)}</b> <span class="sub">${u.role === 'admin' ? '👑 admin' : '🧑‍💼 salesman'}</span></span>
     <span>${u.role === 'salesman'
-      ? `<button class="pay-btn" onclick="resetStaffPw(${u.id}, '${esc(u.username)}')">🔑 Reset</button>
-         <button class="del-btn" onclick="delStaff(${u.id}, '${esc(u.username)}')">🗑️</button>`
+      ? `<button class="pay-btn" onclick="resetStaffPw(${u.id}, '${jsq(u.username)}')">🔑 Reset</button>
+         <button class="del-btn" onclick="delStaff(${u.id}, '${jsq(u.username)}')">🗑️</button>`
       : ''}</span>
   </div>`).join('');
 }

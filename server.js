@@ -335,13 +335,16 @@ app.delete('/api/products/:id', async (req, res) => {
     const info = await pool.query(`
       SELECT p.name, p.category,
         (SELECT COUNT(*) FROM purchases WHERE product_id = p.id) pc,
-        (SELECT COUNT(*) FROM sales WHERE product_id = p.id) sc
+        (SELECT COUNT(*) FROM sales WHERE product_id = p.id) sc,
+        (SELECT COUNT(*) FROM investments WHERE product_id = p.id) ic,
+        (SELECT COALESCE(SUM(amount), 0) FROM investments WHERE product_id = p.id) iamt
       FROM products p WHERE p.id = $1`, [req.params.id]);
     await pool.query('DELETE FROM products WHERE id = $1', [req.params.id]);
     if (info.rows.length) {
       const i = info.rows[0];
       await logAction(req, 'deleted', 'product',
-        `Product DELETED: ${i.name} (${i.category}) — this also removed ${i.pc} purchase(s) and ${i.sc} sale(s) linked to it`);
+        `Product DELETED: ${i.name} (${i.category}) — this also removed ${i.pc} purchase(s) and ${i.sc} sale(s) linked to it` +
+        (num(i.iamt) > 0 ? ` and ${i.ic} partner investment record(s) totalling ${fRs(i.iamt)}` : ''));
     }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -486,6 +489,7 @@ app.post('/api/sales', async (req, res) => {
     if (!product_id) return res.status(400).json({ error: 'Choose a product' });
     if (!sale_date) return res.status(400).json({ error: 'Sale date is required' });
     if (num(qty) <= 0) return res.status(400).json({ error: 'Quantity must be more than 0' });
+    if (num(sale_price) <= 0) return res.status(400).json({ error: 'Sale price must be more than 0' });
 
     const stats = await productStats();
     const prod = stats.find(p => p.id === parseInt(product_id, 10));
@@ -771,6 +775,11 @@ app.post('/api/sales/:id/replace', async (req, res) => {
     const sameProduct = B.id === f.product_id;
     if (!sameProduct && R > B.remaining + 0.001) {
       return res.status(400).json({ error: `Only ${B.remaining} ${B.unit} in stock for ${B.name}` });
+    }
+    // a full-line swap to a different product would leave this sale's old return
+    // records pointing at the wrong product — replace less, or the same product
+    if (!sameProduct && num(f.returned) > 0 && R >= effQty - 0.001) {
+      return res.status(400).json({ error: 'This sale has an old return record on it — replace a smaller quantity, or replace with the same product' });
     }
 
     // no refunds: the replacement must be worth at least what is being handed back
