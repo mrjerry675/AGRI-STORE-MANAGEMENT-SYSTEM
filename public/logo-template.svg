@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512">
+  <defs>
+    <style>@font-face { font-family: 'NastaliqEmbedded'; src: url(data:font/ttf;base64,__FONT_B64__) format('truetype'); }</style>
+    <linearGradient id="gGold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fde68a"/><stop offset="1" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  <circle cx="256" cy="256" r="248" fill="#2a1b52"/>
+  <circle cx="256" cy="256" r="230" fill="none" stroke="url(#gGold)" stroke-width="6"/>
+  <circle cx="256" cy="256" r="130" fill="none" stroke="url(#gGold)" stroke-width="3"/>
+  <path id="arcTop" d="M 88 256 A 168 168 0 0 1 424 256" fill="none"/>
+  <path id="arcBot" d="M 96 256 A 160 160 0 0 0 416 256" fill="none"/>
+  <text font-family="NastaliqEmbedded, Urdu Typesetting, Segoe UI" font-size="38" fill="#fde68a">
+    <textPath xlink:href="#arcTop" href="#arcTop" startOffset="50%" text-anchor="middle">کسان ڈپو</textPath>
+  </text>
+  <text font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="600" fill="#c4b5fd" letter-spacing="4">
+    <textPath xlink:href="#arcBot" href="#arcBot" startOffset="50%" text-anchor="middle">SEEDS • FERTILIZERS • PESTICIDES</textPath>
+  </text>
+  <g transform="rotate(180 256 257)">
+    <line x1="256" y1="350" x2="256" y2="190" stroke="url(#gGold)" stroke-width="8" stroke-linecap="round"/>
+    <g fill="url(#gGold)">
+      <ellipse cx="236" cy="315" rx="24" ry="11" transform="rotate(-35 236 315)"/>
+      <ellipse cx="276" cy="315" rx="24" ry="11" transform="rotate(35 276 315)"/>
+      <ellipse cx="234" cy="277" rx="24" ry="11" transform="rotate(-35 234 277)"/>
+      <ellipse cx="278" cy="277" rx="24" ry="11" transform="rotate(35 278 277)"/>
+      <ellipse cx="236" cy="239" rx="24" ry="11" transform="rotate(-35 236 239)"/>
+      <ellipse cx="276" cy="239" rx="24" ry="11" transform="rotate(35 276 239)"/>
+      <ellipse cx="256" cy="190" rx="13" ry="26"/>
+    </g>
+  </g>
+</svg>

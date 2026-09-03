@@ -1,0 +1,10 @@
+# dependencies
+node_modules/
+
+# local data & secrets — never commit these
+backups/
+config.json
+
+# OS noise
+Thumbs.db
+desktop.ini

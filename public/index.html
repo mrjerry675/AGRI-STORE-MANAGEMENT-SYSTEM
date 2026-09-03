@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kisan Depot — Shop Management</title>
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#2a1b52">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="layout">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <img class="brand-crest" src="logo.svg" alt="Kisan Depot crest">
+      <div>
+        <div class="brand-name">Kisan Depot</div>
+        <div class="brand-sub">Shop Management</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-btn active" data-page="dashboard">📊 <span>Dashboard</span></button>
+      <button class="nav-btn" data-page="products">🏷️ <span>Products</span></button>
+      <button class="nav-btn" data-page="stockin">📦 <span>Purchases</span></button>
+      <button class="nav-btn" data-page="sales">🧾 <span>Sales</span></button>
+      <button class="nav-btn" data-page="register">📒 <span>Full Register</span></button>
+      <button class="nav-btn" data-page="partners">🤝 <span>Partners</span></button>
+      <button class="nav-btn" data-page="expenses">💸 <span>Expenses</span></button>
+      <button class="nav-btn" data-page="logs">📜 <span>Logs</span></button>
+    </nav>
+
+    <div class="sidebar-bottom">
+      <div class="btn-row" style="margin-top:0">
+        <button class="backup-btn" id="backupBtn">💾 Backup</button>
+        <button class="backup-btn" id="importBtn">📥 Import</button>
+      </div>
+      <input type="file" id="importFile" accept=".json,application/json" style="display:none">
+      <div class="btn-row">
+        <button class="backup-btn" id="passwordBtn" title="Password &amp; staff accounts">🔑 Password</button>
+        <button class="backup-btn" id="logoutBtn" title="Logout">🚪 Logout</button>
+      </div>
+      <div class="sidebar-foot"><div id="whoami"></div>Fertilizers • Seeds • Pesticides</div>
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main class="main">
+
+    <!-- ===== DASHBOARD ===== -->
+    <section class="page active" id="page-dashboard">
+      <div class="page-head">
+        <div>
+          <h1>Dashboard <button class="icon-refresh" title="Refresh this page">🔄</button></h1>
+          <p class="subtitle">Your shop's position at a glance</p>
+        </div>
+        <div class="date-pill" id="todayPill"></div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card accent-purple">
+          <div class="stat-top"><span class="stat-icon bg-purple">🧮</span><span class="stat-label">Total Sales</span></div>
+          <div class="stat-value" id="stSales">Rs 0</div>
+          <div class="stat-sub">everything sold so far</div>
+        </div>
+        <div class="stat-card accent-blue">
+          <div class="stat-top"><span class="stat-icon bg-blue">🚚</span><span class="stat-label">Total Purchases</span></div>
+          <div class="stat-value" id="stPurch">Rs 0</div>
+          <div class="stat-sub" id="stPurchSub"></div>
+        </div>
+        <div class="stat-card accent-gold">
+          <div class="stat-top"><span class="stat-icon bg-gold">🧾</span><span class="stat-label">Today's Sales</span></div>
+          <div class="stat-value" id="stToday">Rs 0</div>
+          <div class="stat-sub" id="stTodaySub">No sales yet today</div>
+        </div>
+        <div class="stat-card accent-pink">
+          <div class="stat-top"><span class="stat-icon bg-orange">📦</span><span class="stat-label">Stock Value</span></div>
+          <div class="stat-value" id="stStock">Rs 0</div>
+          <div class="stat-sub">value of goods on your shelves</div>
+        </div>
+
+        <div class="stat-card flat">
+          <div class="stat-top"><span class="stat-icon bg-blue">📈</span><span class="stat-label">Total Profit</span></div>
+          <div class="stat-value" id="stProfit">Rs 0</div>
+          <div class="stat-sub">earned on everything sold so far</div>
+        </div>
+        <div class="stat-card flat">
+          <div class="stat-top"><span class="stat-icon bg-gold">🪙</span><span class="stat-label">5% of Profit</span></div>
+          <div class="stat-value" id="stShare">Rs 0</div>
+          <div class="stat-sub">profit share set aside</div>
+        </div>
+        <div class="stat-card flat">
+          <div class="stat-top"><span class="stat-icon bg-green">💵</span><span class="stat-label">Cash Received</span></div>
+          <div class="stat-value" id="stCash">Rs 0</div>
+        </div>
+        <div class="stat-card flat">
+          <div class="stat-top"><span class="stat-icon bg-grey">🏦</span><span class="stat-label">Bank / Wallet Received</span></div>
+          <div class="stat-value" id="stBank">Rs 0</div>
+          <div class="stat-sub" id="stBankSub"></div>
+        </div>
+
+        <div class="stat-card flat">
+          <div class="stat-top"><span class="stat-icon bg-orange">💸</span><span class="stat-label">Total Expenses</span></div>
+          <div class="stat-value" id="stExpenses">Rs 0</div>
+          <div class="stat-sub">rent, bills, labour and other costs</div>
+        </div>
+        <div class="stat-card flat">
+          <div class="stat-top"><span class="stat-icon bg-green">🧮</span><span class="stat-label">Net Profit</span></div>
+          <div class="stat-value" id="stNet">Rs 0</div>
+          <div class="stat-sub">profit after expenses</div>
+        </div>
+      </div>
+
+      <div class="dash-lower">
+        <div class="card">
+          <div class="chart-head">
+            <h2 class="card-title" id="chartTitle">Sales — last 7 days</h2>
+            <div class="chart-controls">
+              <div class="filter-chips" id="chartChips" style="margin-bottom:0">
+                <button class="chip active" data-view="7d">7 Days</button>
+                <button class="chip" data-view="months">All Months</button>
+              </div>
+              <select id="chartMonth" class="month-select">
+                <option value="">📅 Pick a month…</option>
+              </select>
+            </div>
+          </div>
+          <div class="chart" id="chart7"></div>
+          <div class="chart-legend">
+            <span><i class="dot dot-sales"></i> Sales</span>
+            <span><i class="dot dot-profit"></i> Profit</span>
+            <span class="legend-hint">hover a bar for exact figures</span>
+          </div>
+        </div>
+        <div class="card">
+          <h2 class="card-title">⚠️ Low Stock</h2>
+          <div id="lowStockList"></div>
+        </div>
+      </div>
+
+      <div class="dash-lower2">
+        <div class="card">
+          <h2 class="card-title">🏆 Best Sellers</h2>
+          <div id="bestList"></div>
+        </div>
+        <div class="card">
+          <h2 class="card-title">🐢 Least Sellers</h2>
+          <div id="slowList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== PRODUCTS ===== -->
+    <section class="page" id="page-products">
+      <div class="page-head">
+        <div>
+          <h1>Products <button class="icon-refresh" title="Refresh this page">🔄</button></h1>
+          <p class="subtitle">The fertilizers, seeds and pesticides you keep in the shop</p>
+        </div>
+        <button class="btn-outline" id="rateListBtn">🖨️ Print Rate List</button>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Add New Product</h2>
+        <form id="productForm" class="form-row">
+          <div class="field">
+            <label>Product Name</label>
+            <input type="text" id="pName" placeholder="e.g. Urea 45kg bag" required>
+          </div>
+          <div class="field">
+            <label>Category</label>
+            <select id="pCategory">
+              <option>Fertilizer</option>
+              <option>Seed</option>
+              <option>Pesticide</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Unit</label>
+            <select id="pUnit">
+              <option>bag</option>
+              <option>kg</option>
+              <option>litre</option>
+              <option>packet</option>
+              <option>bottle</option>
+              <option>piece</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Fixed Sale Price (Rs)</label>
+            <input type="number" id="pSalePrice" min="0" step="any" placeholder="auto-fills on sale">
+          </div>
+          <div class="field grow">
+            <label>Description</label>
+            <input type="text" id="pDesc" placeholder="e.g. 46% Nitrogen, 45 kg bag">
+          </div>
+          <div class="field btn-field">
+            <button type="submit" class="btn-primary" id="pSaveBtn">+ Save Product</button>
+          </div>
+          <div class="field btn-field">
+            <button type="button" class="btn-ghost" id="pCancel" style="display:none">✖ Cancel Edit</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Product List &amp; Current Stock</h2>
+        <div class="search-row">
+          <input type="text" id="productSearch" class="search-box" list="productNames"
+                 placeholder="🔍 Search product… (e.g. ur → Urea)" autocomplete="off">
+          <button class="btn-ghost" id="productSearchClear" style="display:none">✖ Clear</button>
+          <datalist id="productNames"></datalist>
+        </div>
+        <div class="filter-chips" id="catChips">
+          <button class="chip active" data-cat="">All</button>
+          <button class="chip" data-cat="Fertilizer">🌱 Fertilizers</button>
+          <button class="chip" data-cat="Seed">🌾 Seeds</button>
+          <button class="chip" data-cat="Pesticide">🐛 Pesticides</button>
+          <button class="chip" data-cat="Other">📦 Others</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Product</th><th>Category</th><th>Description</th>
+                <th class="r">Purchased</th><th class="r">Sold</th>
+                <th class="r">Remaining Stock</th><th class="r">Current Cost</th><th class="r">Sale Price</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="productRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== STOCK IN ===== -->
+    <section class="page" id="page-stockin">
+      <div class="page-head">
+        <div>
+          <h1>Purchases <button class="icon-refresh" title="Refresh this page">🔄</button></h1>
+          <p class="subtitle">Record the stock you buy for the shop</p>
+        </div>
+        <div class="date-pill" id="purchTodayPill">Today's Purchases: Rs 0</div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">New Purchase</h2>
+        <form id="purchaseForm" class="form-row">
+          <div class="field">
+            <label>Product</label>
+            <input type="text" id="buySearch" class="product-search" list="saleProducts"
+                   placeholder="🔍 Type to search…" autocomplete="off">
+            <select id="buyProduct" required><option value="">— choose product —</option></select>
+            <div class="hint" id="buyStockHint"></div>
+          </div>
+          <div class="field">
+            <label>Purchase Date</label>
+            <input type="date" id="buyDate" required>
+          </div>
+          <div class="field">
+            <label>Quantity</label>
+            <input type="number" id="buyQty" min="0" step="any" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Unit Price (Rs)</label>
+            <input type="number" id="buyPrice" min="0" step="any" placeholder="0.00">
+          </div>
+          <div class="field">
+            <label>Transportation Charges (Rs)</label>
+            <input type="number" id="buyTransport" min="0" step="any" placeholder="0.00">
+          </div>
+          <div class="field" id="buyPaidField">
+            <label>Amount Paid Now (Rs)</label>
+            <input type="number" id="buyPaid" min="0" step="any" placeholder="full amount">
+          </div>
+        </form>
+        <div class="form-foot">
+          <div class="live-total">Total: <span id="buyTotal">Rs 0</span></div>
+          <button type="submit" form="purchaseForm" class="btn-primary" id="buySaveBtn">+ Save Purchase</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Purchase History</h2>
+        <div class="search-row">
+          <input type="text" id="purchaseSearch" class="search-box" list="purchaseProductNames"
+                 placeholder="🔍 Search by product… (e.g. ur → Urea)" autocomplete="off">
+          <button class="btn-ghost" id="purchaseSearchClear" style="display:none">✖ Clear</button>
+          <datalist id="purchaseProductNames"></datalist>
+        </div>
+        <div class="filter-chips" id="buyChips">
+          <button class="chip active" data-cat="">All</button>
+          <button class="chip" data-cat="Fertilizer">🌱 Fertilizers</button>
+          <button class="chip" data-cat="Seed">🌾 Seeds</button>
+          <button class="chip" data-cat="Pesticide">🐛 Pesticides</button>
+          <button class="chip" data-cat="Other">📦 Others</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Date</th><th>Product</th><th class="r">Quantity</th><th class="r">Unit Price</th><th class="r">Transport</th><th class="r">Total Amount</th><th class="r">Paid</th><th class="r">Remaining</th><th></th></tr>
+            </thead>
+            <tbody id="purchaseRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== SALES ===== -->
+    <section class="page" id="page-sales">
+      <div class="page-head">
+        <div>
+          <h1>Sales <button class="icon-refresh" title="Refresh this page">🔄</button></h1>
+          <p class="subtitle">Record every sale with customer details</p>
+        </div>
+        <div class="date-pill" id="salesTodayPill">Today's Sales: Rs 0</div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">New Sale</h2>
+        <form id="saleForm">
+          <div class="section-label">Item &amp; Payment</div>
+          <div class="form-row">
+            <div class="field">
+              <label>Product</label>
+              <input type="text" id="sellSearch" class="product-search" list="saleProducts"
+                     placeholder="🔍 Type to search…" autocomplete="off">
+              <select id="sellProduct" required><option value="">— choose product —</option></select>
+              <div class="hint" id="sellStockHint"></div>
+              <datalist id="saleProducts"></datalist>
+            </div>
+            <div class="field">
+              <label>Sale Date</label>
+              <input type="date" id="sellDate" required>
+            </div>
+            <div class="field">
+              <label>Quantity</label>
+              <input type="number" id="sellQty" min="0" step="any" placeholder="0">
+            </div>
+            <div class="field">
+              <label>Sale Price per unit (Rs)</label>
+              <input type="number" id="sellPrice" min="0" step="any" placeholder="0.00">
+            </div>
+          </div>
+          <div id="extraItems"></div>
+          <div class="form-row">
+            <div class="field btn-field">
+              <button type="button" class="add-round-btn" id="addItemBtn" title="Add another product">➕</button>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label>Payment Method</label>
+              <select id="sellPayment">
+                <option value="Cash">💵 Cash</option>
+                <option value="Bank">🏦 Bank Transfer</option>
+                <option value="JazzCash / Easypaisa">📱 JazzCash / Easypaisa</option>
+                <option value="Credit (Udhaar)">📒 Credit (Udhaar)</option>
+              </select>
+            </div>
+            <div class="field" id="bankField" style="display:none">
+              <label>Bank</label>
+              <select id="sellBank">
+                <option>Bank Alfalah</option>
+                <option>Bank of Punjab</option>
+                <option>Meezan Bank</option>
+              </select>
+            </div>
+            <div class="field" id="sellPaidField">
+              <label>Amount Received Now (Rs)</label>
+              <input type="number" id="sellPaid" min="0" step="any" placeholder="full amount">
+            </div>
+          </div>
+          <div class="section-label">Customer Details</div>
+          <div class="form-row">
+            <div class="field">
+              <label>Customer Name</label>
+              <input type="text" id="custName" placeholder="e.g. Ahmed Khan">
+            </div>
+            <div class="field">
+              <label>Phone No.</label>
+              <input type="text" id="custPhone" placeholder="e.g. 0300 1234567">
+            </div>
+            <div class="field">
+              <label>Address</label>
+              <input type="text" id="custAddress" placeholder="e.g. Chak 42, Multan">
+            </div>
+            <div class="field btn-field">
+              <div class="live-total">Total: <span id="sellTotal">Rs 0</span></div>
+            </div>
+          </div>
+          <button type="submit" class="btn-primary" id="sellSaveBtn">+ Save Sale</button>
+          <button type="button" class="btn-ghost" id="sellCancel" style="display:none">✖ Cancel Edit</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">📋 My Day — Today's Summary</h2>
+        <div class="exp-totals" id="mydayStats">Loading…</div>
+        <button class="btn-outline" id="dayCloseBtn">🖨️ Print Day-Close Slip</button>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Sales History</h2>
+        <div class="search-row">
+          <input type="text" id="saleSearch" class="search-box" list="customerNames"
+                 placeholder="🔍 Search by customer name… (e.g. ah → Ahmed Khan)" autocomplete="off">
+          <button class="btn-ghost" id="saleSearchClear" style="display:none">✖ Clear</button>
+          <datalist id="customerNames"></datalist>
+        </div>
+        <div class="filter-chips" id="sellChips">
+          <button class="chip active" data-cat="">All</button>
+          <button class="chip" data-cat="Fertilizer">🌱 Fertilizers</button>
+          <button class="chip" data-cat="Seed">🌾 Seeds</button>
+          <button class="chip" data-cat="Pesticide">🐛 Pesticides</button>
+          <button class="chip" data-cat="Other">📦 Others</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Date</th><th>Product</th><th class="r">Qty</th><th class="r">Sale Price</th><th class="r">Total</th><th class="r">Paid</th><th class="r">Remaining</th><th>Payment</th><th>Customer</th><th>Phone</th><th></th></tr>
+            </thead>
+            <tbody id="saleRows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">🔁 Replacements History</h2>
+        <p class="subtitle" style="margin-bottom:14px">Shop policy: no refunds — products can be replaced within 3 days of purchase</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Date</th><th>Receipt</th><th>Customer</th><th class="r">Qty</th><th>Returned Item</th><th>Replaced With</th><th class="r">Extra Paid</th><th>Reason</th></tr>
+            </thead>
+            <tbody id="replaceRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== FULL REGISTER ===== -->
+    <section class="page" id="page-register">
+      <div class="page-head">
+        <div>
+          <h1>Full Register <button class="icon-refresh" title="Refresh this page">🔄</button></h1>
+          <p class="subtitle">Every purchase and sale in one book — all 18 columns</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="filter-chips no-print" id="regChips">
+          <button class="chip active" data-cat="">All</button>
+          <button class="chip" data-cat="Fertilizer">🌱 Fertilizers</button>
+          <button class="chip" data-cat="Seed">🌾 Seeds</button>
+          <button class="chip" data-cat="Pesticide">🐛 Pesticides</button>
+          <button class="chip" data-cat="Other">📦 Others</button>
+        </div>
+        <div class="form-row filter-row no-print">
+          <div class="field">
+            <label>Product</label>
+            <select id="regProduct"><option value="">All products</option></select>
+          </div>
+          <div class="field">
+            <label>From</label>
+            <input type="date" id="regFrom">
+          </div>
+          <div class="field">
+            <label>To</label>
+            <input type="date" id="regTo">
+          </div>
+          <div class="field btn-field">
+            <button class="btn-outline" id="regApply">Apply</button>
+          </div>
+          <div class="field btn-field">
+            <button class="btn-ghost" id="regClear">Clear</button>
+          </div>
+          <div class="field btn-field">
+            <button class="btn-ghost" id="regPrint">🖨️ Print</button>
+          </div>
+        </div>
+
+        <div class="table-wrap register-wrap">
+          <table class="register-table">
+            <thead>
+              <tr class="group-row">
+                <th colspan="2"></th>
+                <th colspan="5" class="grp grp-purchase">📦 PURCHASES (STOCK IN)</th>
+                <th colspan="6" class="grp grp-sale">🧾 SALE</th>
+                <th colspan="3" class="grp grp-customer">👤 CUSTOMER</th>
+                <th colspan="3" class="grp grp-stock">📊 STOCK</th>
+              </tr>
+              <tr>
+                <th>#</th><th>Description</th>
+                <th>Date</th><th class="r">Qty Purchased</th><th class="r">Unit Price</th><th class="r">Total Amount</th><th class="r">Total Stock</th>
+                <th>Date</th><th class="r">Qty Sold</th><th class="r">Sale Price</th><th class="r">Total Amount</th><th>Payment</th><th class="r">Profit</th>
+                <th>Name</th><th>Phone</th><th>Address</th>
+                <th class="r">Remaining Stock</th><th class="r">5% of Profit</th><th class="r">Stock Price</th>
+              </tr>
+            </thead>
+            <tbody id="registerRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== PARTNERS ===== -->
+    <section class="page" id="page-partners">
+      <div class="page-head">
+        <div>
+          <h1>Partners <button class="icon-refresh" title="Refresh this page">🔄</button></h1>
+          <p class="subtitle">Business partners, their investments and profit shares</p>
+        </div>
+        <button class="btn-primary" id="addPartnerBtn">+ Add Partner</button>
+      </div>
+
+      <div class="partner-grid" id="partnerCards"></div>
+
+      <div id="formerSection" style="display:none">
+        <h2 class="card-title" style="margin:10px 0 16px">👋 Former Partners</h2>
+        <div class="partner-grid" id="formerCards"></div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Add Investment</h2>
+        <form id="investForm">
+          <div class="form-row">
+            <div class="field">
+              <label>Partner</label>
+              <select id="invPartner" required><option value="">— choose partner —</option></select>
+            </div>
+            <div class="field">
+              <label>Date</label>
+              <input type="date" id="invDate" required>
+            </div>
+            <div class="field">
+              <label>Total Amount (Rs)</label>
+              <input type="number" id="invAmount" min="0" step="any" placeholder="0.00">
+            </div>
+          </div>
+          <div class="field grow" style="margin-bottom:14px">
+            <label>Products — tick one, several, or all</label>
+            <div class="check-panel" id="invProducts"></div>
+            <div class="hint" id="invSplitHint"></div>
+          </div>
+          <button type="submit" class="btn-primary">+ Save Investment</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Investment Records</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Date</th><th>Partner</th><th>Product</th><th class="r">Amount</th><th></th></tr>
+            </thead>
+            <tbody id="investRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== EXPENSES ===== -->
+    <section class="page" id="page-expenses">
+      <div class="page-head">
+        <div>
+          <h1>Expenses <button class="icon-refresh" title="Refresh this page">🔄</button></h1>
+          <p class="subtitle">Rent, bills, labour and other shop costs</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title" id="expFormTitle">Add Expense</h2>
+        <form id="expenseForm" class="form-row">
+          <div class="field">
+            <label>Date</label>
+            <input type="date" id="expDate" required>
+          </div>
+          <div class="field">
+            <label>Category</label>
+            <select id="expCategory">
+              <option>Rent</option>
+              <option>Electricity</option>
+              <option>Labour</option>
+              <option>Transport</option>
+              <option>Tea &amp; Food</option>
+              <option>Repairs</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="field grow">
+            <label>Description</label>
+            <input type="text" id="expDesc" placeholder="e.g. Shop rent for August">
+          </div>
+          <div class="field">
+            <label>Amount (Rs)</label>
+            <input type="number" id="expAmount" min="0" step="any" placeholder="0.00">
+          </div>
+          <div class="field btn-field">
+            <button type="submit" class="btn-primary" id="expSaveBtn">+ Save Expense</button>
+          </div>
+          <div class="field btn-field">
+            <button type="button" class="btn-ghost" id="expCancel" style="display:none">✖ Cancel Edit</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Expense Records</h2>
+        <div class="form-row filter-row">
+          <div class="field">
+            <label>Show Month</label>
+            <select id="expMonth"><option value="">All months</option></select>
+          </div>
+        </div>
+        <div class="exp-totals" id="expTotals"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Date</th><th>Category</th><th>Description</th><th class="r">Amount</th><th></th></tr>
+            </thead>
+            <tbody id="expenseRows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">🤝 Expense Split Between Partners</h2>
+        <p class="subtitle" style="margin-bottom:14px">Each partner bears expenses in proportion to their investment — follows the month chosen above</p>
+        <div id="expSplitList"></div>
+      </div>
+    </section>
+
+    <!-- ===== LOGS ===== -->
+    <section class="page" id="page-logs">
+      <div class="page-head">
+        <div>
+          <h1>Activity Logs <button class="icon-refresh" title="Refresh this page">🔄</button></h1>
+          <p class="subtitle">Everything saved, changed or deleted — recorded permanently, nothing here can be altered</p>
+        </div>
+        <div style="display:flex; gap:10px">
+          <button class="btn-outline" id="logsCsv">⬇ CSV (Excel)</button>
+          <button class="btn-outline" id="logsPdf">⬇ PDF Report</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="filter-chips" id="logTimeChips">
+          <button class="chip active" data-window="3h">🕒 Last 3 Hours</button>
+          <button class="chip" data-window="today">Today</button>
+          <button class="chip" data-window="7d">Last 7 Days</button>
+          <button class="chip" data-window="all">All Time</button>
+        </div>
+        <div class="form-row filter-row">
+          <div class="field">
+            <label>From (date &amp; time)</label>
+            <input type="datetime-local" id="logFrom">
+          </div>
+          <div class="field">
+            <label>To (date &amp; time)</label>
+            <input type="datetime-local" id="logTo">
+          </div>
+          <div class="field btn-field">
+            <button class="btn-outline" id="logRangeApply">Show This Period</button>
+          </div>
+        </div>
+        <div class="search-row">
+          <input type="text" id="logSearch" class="search-box"
+                 placeholder="🔍 Search logs… (product, customer, amount)" autocomplete="off">
+          <button class="btn-ghost" id="logSearchClear" style="display:none">✖ Clear</button>
+          <select id="logUserSel" class="month-select"><option value="">👥 All users</option></select>
+        </div>
+        <div class="filter-chips" id="logChips">
+          <button class="chip active" data-act="">All</button>
+          <button class="chip" data-act="created">✔ Saved</button>
+          <button class="chip" data-act="deleted">🗑 Deleted</button>
+          <button class="chip" data-act="edited">✏ Edited</button>
+          <button class="chip" data-act="payment">💰 Payments</button>
+          <button class="chip" data-act="return">🔁 Replacements</button>
+          <button class="chip" data-act="other">⚙ Other</button>
+        </div>
+        <div class="table-wrap logs-wrap">
+          <table>
+            <thead>
+              <tr><th>Date</th><th>Time</th><th>User</th><th>Action</th><th>Details</th></tr>
+            </thead>
+            <tbody id="logRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- payment dialog -->
+<div class="modal-overlay" id="payModal">
+  <div class="modal">
+    <h2 class="card-title" id="payTitle">Receive Payment</h2>
+    <p class="pay-info" id="payInfo"></p>
+    <div class="field">
+      <label>Amount (Rs)</label>
+      <input type="number" id="payAmount" min="0" step="any">
+    </div>
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="payDate">
+    </div>
+    <div class="field">
+      <label>Paid Via</label>
+      <select id="payMethod">
+        <option value="Cash">💵 Cash</option>
+        <option>Bank Alfalah</option>
+        <option>Bank of Punjab</option>
+        <option>Meezan Bank</option>
+        <option>JazzCash / Easypaisa</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-primary" id="paySave">💰 Save Payment</button>
+      <button class="btn-ghost" id="payCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- full analytics view -->
+<div class="modal-overlay" id="analyticsModal">
+  <div class="modal modal-wide">
+    <div class="analytics-head">
+      <h2 class="card-title" id="analyticsTitle">📊 Full Analytics — Month by Month</h2>
+      <button class="btn-ghost" id="analyticsClose">✖ Close</button>
+    </div>
+    <div class="chart-controls" style="margin:6px 0 10px">
+      <div class="filter-chips" id="bigChips" style="margin-bottom:0">
+        <button class="chip active" data-view="months">All Months</button>
+        <button class="chip" data-view="7d">Last 7 Days</button>
+      </div>
+      <select id="bigMonth" class="month-select"><option value="">📅 Pick a month…</option></select>
+    </div>
+    <div class="chart big-chart" id="bigChart"></div>
+    <div class="chart-legend">
+      <span><i class="dot dot-sales"></i> Sales</span>
+      <span><i class="dot dot-profit"></i> Profit</span>
+    </div>
+    <div class="table-wrap" id="analyticsTableWrap" style="margin-top:16px">
+      <table>
+        <thead>
+          <tr><th id="analyticsPeriodHead">Month</th><th class="r">Sales</th><th class="r">Profit</th><th class="r">5% of Profit</th><th class="r">Purchases</th><th class="r">Expenses</th><th class="r">Net (Profit − Expenses)</th></tr>
+        </thead>
+        <tbody id="analyticsRows"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- confirm dialog -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal">
+    <h2 class="card-title" id="confirmTitle">Are you sure?</h2>
+    <p class="pay-info" id="confirmMsg"></p>
+    <div class="modal-actions">
+      <button class="btn-primary danger" id="confirmOk">Yes, Delete</button>
+      <button class="btn-ghost" id="confirmCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- text input dialog -->
+<div class="modal-overlay" id="inputModal">
+  <div class="modal">
+    <h2 class="card-title" id="inputTitle"></h2>
+    <div class="field">
+      <label id="inputLabel"></label>
+      <input type="text" id="inputField" autocomplete="off">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-primary" id="inputOk">✔ Save</button>
+      <button class="btn-ghost" id="inputCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- change password dialog -->
+<div class="modal-overlay" id="pwModal">
+  <div class="modal">
+    <h2 class="card-title">🔑 Password &amp; Staff</h2>
+    <div class="section-label">My Password</div>
+    <div class="field">
+      <label>Current Password</label>
+      <input type="password" id="pwCurrent" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>New Password (at least 6 characters)</label>
+      <input type="password" id="pwNew" autocomplete="off">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-primary" id="pwSave">✔ Change Password</button>
+    </div>
+
+    <div id="staffSection">
+      <div class="section-label" style="margin-top:22px">👤 Staff Accounts</div>
+      <p class="pay-info">A salesman can only record sales, purchases, payments and returns. The log shows their name on everything they do.</p>
+      <div id="staffList" style="margin-bottom:14px"></div>
+      <div class="field">
+        <label>New Salesman Username</label>
+        <input type="text" id="staffUser" autocomplete="off" placeholder="e.g. akram">
+      </div>
+      <div class="field">
+        <label>Password (at least 6 characters)</label>
+        <input type="password" id="staffPw" autocomplete="off">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-primary" id="staffAdd">+ Add Salesman</button>
+      </div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn-ghost" id="pwCancel">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- logs password dialog -->
+<div class="modal-overlay" id="logsModal">
+  <div class="modal">
+    <h2 class="card-title">🔒 Logs Password</h2>
+    <p class="pay-info">The Logs section is protected.<br>Enter the logs password to open it.</p>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="logsPw" autocomplete="off">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-primary" id="logsPwOk">🔓 Unlock</button>
+      <button class="btn-ghost" id="logsPwCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- replacement dialog (no refunds — exchange within 3 days) -->
+<div class="modal-overlay" id="replaceModal">
+  <div class="modal">
+    <h2 class="card-title">🔁 Replace Product</h2>
+    <p class="pay-info" id="replaceInfo"></p>
+    <div class="field">
+      <label>Quantity Being Returned</label>
+      <input type="number" id="repQty" min="0" step="any" placeholder="0">
+    </div>
+    <div class="field">
+      <label>Replacement Product</label>
+      <select id="repProduct"></select>
+    </div>
+    <div class="field">
+      <label>Replacement Price per unit (Rs)</label>
+      <input type="number" id="repPrice" min="0" step="any">
+      <div class="hint" id="repHint"></div>
+    </div>
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="repDate">
+    </div>
+    <div class="field">
+      <label>Reason</label>
+      <select id="repReason">
+        <option>Damaged</option>
+        <option>Wrong product</option>
+        <option>Customer changed mind</option>
+        <option>Other</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Details (optional)</label>
+      <input type="text" id="repDetails" placeholder="e.g. torn bag">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-primary" id="repSave">🔁 Save Replacement</button>
+      <button class="btn-ghost" id="repCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — Kisan Depot</title>
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#2a1b52">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  .login-page {
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .login-card {
+    width: 100%; max-width: 400px;
+    background: linear-gradient(170deg, var(--card-soft), var(--card) 70%);
+    border: 1px solid var(--line-strong);
+    border-radius: 20px;
+    padding: 38px 36px 34px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .45), 0 0 60px rgba(124, 58, 237, .18);
+  }
+  .login-brand { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 28px; text-align: center; }
+  .login-brand .login-crest {
+    width: 110px; height: 110px;
+    filter: drop-shadow(0 0 20px rgba(251, 191, 36, .35));
+  }
+  .login-brand h1 { font-size: 26px; }
+  .login-brand h1 span {
+    background: linear-gradient(90deg, #f1edfc, #c4b5fd);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .login-brand p { color: var(--muted); font-size: 13.5px; }
+  .login-card .field { min-width: 0; margin-bottom: 16px; }
+  .login-card .btn-primary { width: 100%; margin-top: 6px; }
+  .login-err {
+    display: none;
+    background: rgba(251, 113, 133, .10);
+    border: 1px solid rgba(251, 113, 133, .35);
+    color: var(--red);
+    border-radius: 10px; padding: 10px 14px;
+    font-size: 13.5px; font-weight: 600;
+    margin-bottom: 16px;
+  }
+  .login-err.show { display: block; }
+  .login-foot { text-align: center; color: #7f72a8; font-size: 12px; margin-top: 22px; }
+</style>
+</head>
+<body>
+<div class="login-page">
+  <form class="login-card" id="loginForm">
+    <div class="login-brand">
+      <img class="login-crest" src="logo.svg" alt="Kisan Depot crest">
+      <h1><span>Kisan Depot</span></h1>
+      <p>Sign in to manage your shop</p>
+    </div>
+
+    <div class="login-err" id="loginErr"></div>
+
+    <div class="field">
+      <label for="username">Username</label>
+      <input type="text" id="username" autocomplete="username" autofocus required>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input type="password" id="password" autocomplete="current-password" required>
+    </div>
+
+    <button type="submit" class="btn-primary" id="loginBtn">Sign In</button>
+
+    <div class="login-foot">Fertilizers • Seeds • Pesticides</div>
+  </form>
+</div>
+
+<script>
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+  document.getElementById('loginForm').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const err = document.getElementById('loginErr');
+    const btn = document.getElementById('loginBtn');
+    err.className = 'login-err';
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('username').value,
+          password: document.getElementById('password').value
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Login failed');
+      window.location.href = '/';
+    } catch (e) {
+      err.textContent = e.message;
+      err.className = 'login-err show';
+      btn.disabled = false; btn.textContent = 'Sign In';
+    }
+  });
+</script>
+</body>
+</html>

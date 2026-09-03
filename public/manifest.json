@@ -1,0 +1,15 @@
+{
+  "name": "Kisan Depot",
+  "short_name": "Kisan Depot",
+  "description": "Shop management for fertilizers, seeds and pesticides",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#17102b",
+  "theme_color": "#2a1b52",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
