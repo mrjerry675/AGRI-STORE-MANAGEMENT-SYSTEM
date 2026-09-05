@@ -168,7 +168,7 @@ function refresh(page) {
   if (page === 'dashboard') loadDashboard();
   if (page === 'products') loadProducts();
   if (page === 'stockin') { loadProductOptions(); loadPurchases(); }
-  if (page === 'sales') { loadProductOptions(); loadSales(); loadReplacements(); loadMyDay(); if (isAdmin()) loadReturns(); }
+  if (page === 'sales') { loadProductOptions(); loadSales(); loadReplacements(); loadMyDay(); loadWaDeals(); if (isAdmin()) loadReturns(); }
   if (page === 'khata') loadKhata();
   if (page === 'register') { loadProductOptions(); loadRegister(); }
   if (page === 'partners') { loadPartners(); loadInvestments(); fillInvestProducts(); }
@@ -822,7 +822,7 @@ function renderSales() {
       <td>${payLabel(r.payment)}</td>
       <td>${esc(r.customer_name)}</td>
       <td>${esc(r.phone)}</td>
-      <td>${r.effQty > 0.001 && withinReturnWindow(r.sale_date) ? `<button class="ret-btn" onclick="openReplace(${r.id})" title="Replace product (within 3 days)">🔁</button>` : ''}${isAdmin() && r.effQty > 0.001 ? `<button class="ret-btn" onclick="openRefund(${r.id})" title="Exception refund (admin only)">↩</button>` : ''}<button class="print-btn" onclick="printReceipt(${r.id})" title="Print receipt">🖨️</button><button class="print-btn" onclick="waReceipt(${r.id})" title="Send receipt on WhatsApp">💬</button>${isAdmin() ? `<button class="edit-btn" onclick="editSale(${r.id})" title="Edit">✏️</button><button class="del-btn" onclick="delSale(${r.id})">🗑️</button>` : ''}</td>
+      <td>${r.effQty > 0.001 && withinReturnWindow(r.sale_date) ? `<button class="ret-btn" onclick="openReplace(${r.id})" title="Replace product (within 3 days)">🔁</button>` : ''}${isAdmin() && r.effQty > 0.001 ? `<button class="ret-btn" onclick="openRefund(${r.id})" title="Exception refund (admin only)">↩</button>` : ''}<button class="print-btn" onclick="printReceipt(${r.id})" title="Print receipt">🖨️</button><button class="print-btn" onclick="waThanks(${r.id})" title="Send thank-you message on WhatsApp">💬</button>${isAdmin() ? `<button class="edit-btn" onclick="editSale(${r.id})" title="Edit">✏️</button><button class="del-btn" onclick="delSale(${r.id})">🗑️</button>` : ''}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="11" class="empty-row">${saleSearchTerm
       ? 'No sales matching "' + esc(saleSearchTerm) + '"'
@@ -1360,17 +1360,13 @@ $('saleForm').addEventListener('submit', async ev => {
 // offer the receipt right after saving — no scrolling down to find the row
 async function askPrintReceipt(id) {
   await loadSales(); // make sure the fresh sale is in the cache before printing
+  // customer has a phone number: open WhatsApp straight away with the
+  // thank-you message ready — one tap on Send inside WhatsApp finishes it
+  const r = saleCache.find(x => x.id === id);
+  if (r && String(r.phone || '').trim()) waThanks(id);
   const ok = await uiConfirm('🖨️ Print Receipt?',
     'Sale saved ✔ — print the receipt for the customer now?', '🖨️ Print Receipt', false);
   if (ok) printReceipt(id);
-  // if the customer has a phone number, also offer a WhatsApp copy
-  const r = saleCache.find(x => x.id === id);
-  if (r && String(r.phone || '').trim()) {
-    const wa = await uiConfirm('💬 WhatsApp Receipt?',
-      `Send the receipt to <b>${esc(r.customer_name) || 'the customer'}</b> on WhatsApp (${esc(r.phone)})?`,
-      '💬 Send on WhatsApp', false);
-    if (wa) waReceipt(id);
-  }
 }
 
 // ---------- returns ----------
@@ -1653,53 +1649,52 @@ function waNumber(phone) {
   return d;
 }
 
-function buildReceiptText(id) {
-  const r = saleCache.find(x => x.id === id);
-  if (!r) return null;
-  const group = r.receipt_group || r.id;
-  const items = saleCache.filter(x => (x.receipt_group || x.id) === group).sort((a, b) => a.id - b.id);
-  const total = items.reduce((s, x) => s + (parseFloat(x.effTotal) || 0), 0);
-  const paidNet = items.reduce((s, x) => s + (parseFloat(x.paidNet) || 0), 0);
-  const remaining = items.reduce((s, x) => s + (parseFloat(x.remaining) || 0), 0);
-
-  const lines = items.map((x, i) => {
-    const ps = parseFloat(x.pack_size) || 0;
-    const loose = ps > 0 && !Number.isInteger(parseFloat(x.effQty));
-    const qtyStr = loose
-      ? `${qty(parseFloat(x.effQty) * ps)} ${x.pack_unit} (loose)`
-      : `${qty(x.effQty)} ${x.unit} x ${rs(x.sale_price)}`;
-    return `${i + 1}. ${x.name} — ${qtyStr} = ${rs(x.effTotal)}`;
-  });
-
-  const text =
-    `🌾 *Kisan Depot* 🌾\n` +
-    `Fertilizers • Seeds • Pesticides\n` +
-    `وڈانہ اڈا، مین فیروزپور روڈ، قصور\n` +
-    `📞 0305-9191759\n\n` +
-    `🧾 Receipt: *KD-${group}*\n` +
-    `📅 ${fmtDate(r.sale_date)}\n` +
-    (r.customer_name ? `👤 ${r.customer_name}\n` : '') +
-    `\n${lines.join('\n')}\n\n` +
-    `*Total: ${rs(total)}*\n` +
-    `Paid: ${rs(paidNet)}\n` +
-    (remaining > 0.001 ? `⚠️ Balance due: *${rs(remaining)}*\n` : '') +
-    `Payment: ${r.payment}\n\n` +
-    `شکریہ! Thank you for your purchase.\n` +
-    `تبدیلی صرف 3 دن کے اندر قابلِ قبول ہے`;
-
-  return { text, phone: r.phone };
+// the message is a short thank-you with shop details and the current deals
+// line (editable by the admin, stored on the server so every device matches)
+let waDeals = '';
+async function loadWaDeals() {
+  try { waDeals = (await api('/api/settings/wa_deals')).value || ''; } catch { /* keep old */ }
 }
 
-function waReceipt(id) {
-  const rec = buildReceiptText(id);
-  if (!rec) return;
-  const num = waNumber(rec.phone);
+function waThanksText(r) {
+  const firstName = (r.customer_name || '').trim().split(/\s+/)[0];
+  return `🌾 *Kisan Depot* 🌾\n` +
+    (firstName ? `شکریہ ${firstName} صاحب!\n` : `شکریہ!\n`) +
+    `Thank you for shopping with us 💚\n\n` +
+    `📍 وڈانہ اڈا، مین فیروزپور روڈ، قصور\n` +
+    `📞 0305-9191759\n` +
+    `Fertilizers • Seeds • Pesticides\n` +
+    (waDeals ? `\n🔥 *In these days:* ${waDeals}\n` : '') +
+    `\nآپ کا اعتماد ہمارا سرمایہ ہے 🌾`;
+}
+
+function waThanks(id) {
+  const r = saleCache.find(x => x.id === id);
+  if (!r) return;
+  const num = waNumber(r.phone);
+  const text = waThanksText(r);
   // with a saved number WhatsApp opens that chat; without, it asks who to send to
   const url = num
-    ? `https://wa.me/${num}?text=${encodeURIComponent(rec.text)}`
-    : `https://wa.me/?text=${encodeURIComponent(rec.text)}`;
+    ? `https://wa.me/${num}?text=${encodeURIComponent(text)}`
+    : `https://wa.me/?text=${encodeURIComponent(text)}`;
   window.open(url, '_blank');
 }
+
+// admin edits the deals line shown in every thank-you message
+$('waDealsBtn').addEventListener('click', async () => {
+  await loadWaDeals();
+  const v = await uiPrompt('💬 WhatsApp Deals Line',
+    'Shown in every thank-you message (leave empty for none)', waDeals);
+  if (v === null) return;
+  try {
+    const r = await api('/api/settings/wa_deals', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: v })
+    });
+    waDeals = r.value;
+    toast(r.value ? 'Deals line saved ✔' : 'Deals line cleared ✔');
+  } catch (e) { toast(e.message, true); }
+});
 
 async function delSale(id) {
   if (!(await uiConfirm('Delete Sale?', 'This sale, its payment records and any returns on it will be removed.'))) return;
@@ -2524,7 +2519,7 @@ $('pwNew').addEventListener('keydown', ev => { if (ev.key === 'Enter') $('pwSave
       const b = document.querySelector(`.nav-btn[data-page="${p}"]`);
       if (b) b.style.display = 'none';
     });
-    ['backupBtn', 'importBtn', 'passwordBtn', 'returnsCard'].forEach(id => { $(id).style.display = 'none'; });
+    ['backupBtn', 'importBtn', 'passwordBtn', 'returnsCard', 'waDealsBtn'].forEach(id => { $(id).style.display = 'none'; });
     // salesman records for today only — dates are fixed
     $('sellDate').value = todayISO(); $('sellDate').disabled = true;
     $('buyDate').value = todayISO(); $('buyDate').disabled = true;

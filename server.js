@@ -55,6 +55,7 @@ const SALESMAN_ALLOW = [
   ['GET', /^\/sales$/], ['POST', /^\/sales$/], ['POST', /^\/sales\/multi$/],
   ['POST', /^\/sales\/\d+\/payments$/], ['POST', /^\/sales\/\d+\/replace$/],
   ['GET', /^\/khata$/], ['POST', /^\/khata\/pay$/],
+  ['GET', /^\/settings\/wa_deals$/],
   ['GET', /^\/replacements$/],
   ['GET', /^\/purchases$/], ['POST', /^\/purchases$/], ['POST', /^\/purchases\/\d+\/payments$/]
 ];
@@ -572,6 +573,32 @@ app.put('/api/sales/:id', async (req, res) => {
       await logAction(req, 'edited', 'sale', `Sale KD-${req.params.id} edited — ${changes.join(', ')}`);
     }
     res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------- tiny key/value settings (e.g. the WhatsApp deals line) ----------
+const ensureSettings = pool.query(
+  `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '')`)
+  .catch(e => console.error('settings table:', e.message));
+
+app.get('/api/settings/wa_deals', async (req, res) => {
+  try {
+    await ensureSettings;
+    const { rows } = await pool.query(`SELECT value FROM settings WHERE key = 'wa_deals'`);
+    res.json({ value: rows.length ? rows[0].value : '' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/settings/wa_deals', async (req, res) => {
+  try {
+    await ensureSettings;
+    const value = String(req.body.value || '').trim().slice(0, 300);
+    await pool.query(
+      `INSERT INTO settings (key, value) VALUES ('wa_deals', $1)
+       ON CONFLICT (key) DO UPDATE SET value = $1`, [value]);
+    await logAction(req, 'edited', 'settings',
+      value ? `WhatsApp deals line updated: "${value}"` : 'WhatsApp deals line cleared');
+    res.json({ ok: true, value });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
