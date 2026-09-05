@@ -13,18 +13,104 @@
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <style>
+  body { overflow-x: hidden; }
+
+  /* ---------- background scene: night sky over the fields ---------- */
+  .login-bg {
+    position: fixed; inset: 0; z-index: 0; overflow: hidden;
+    background:
+      radial-gradient(1100px 700px at 15% -10%, rgba(124, 58, 237, .30), transparent 60%),
+      radial-gradient(900px 600px at 108% 12%, rgba(167, 139, 250, .16), transparent 55%),
+      radial-gradient(1100px 800px at 50% 118%, rgba(251, 191, 36, .12), transparent 62%),
+      linear-gradient(180deg, #100a20, #1b1233 55%, #150e28);
+  }
+  .glow { position: absolute; border-radius: 50%; filter: blur(80px); animation: breathe 10s ease-in-out infinite; }
+  .glow.g1 { width: 540px; height: 540px; left: -160px; top: -180px; background: rgba(124, 58, 237, .28); }
+  .glow.g2 { width: 440px; height: 440px; right: -130px; top: 28%; background: rgba(167, 139, 250, .18); animation-delay: -3.5s; }
+  .glow.g3 { width: 620px; height: 380px; left: calc(50% - 310px); bottom: -160px; background: rgba(251, 191, 36, .14); animation-delay: -7s; }
+  @keyframes breathe { 0%, 100% { transform: scale(1); opacity: .85; } 50% { transform: scale(1.14); opacity: 1; } }
+
+  .stars, .stars2 {
+    position: absolute; top: 0; left: 0; width: 2px; height: 2px; border-radius: 50%;
+    background: transparent; animation: twinkle 4.5s ease-in-out infinite;
+  }
+  .stars {
+    box-shadow:
+      6vw 8vh 0 0 rgba(241,237,252,.9), 14vw 22vh 0 0 rgba(196,181,253,.7), 22vw 5vh 0 0 rgba(241,237,252,.8),
+      30vw 16vh 0 0 rgba(196,181,253,.6), 37vw 7vh 0 0 rgba(241,237,252,.9), 45vw 19vh 0 0 rgba(241,237,252,.55),
+      53vw 4vh 0 0 rgba(196,181,253,.8), 61vw 13vh 0 0 rgba(241,237,252,.7), 69vw 24vh 0 0 rgba(196,181,253,.6),
+      76vw 9vh 0 0 rgba(241,237,252,.85), 84vw 18vh 0 0 rgba(241,237,252,.6), 91vw 6vh 0 0 rgba(196,181,253,.8),
+      96vw 26vh 0 0 rgba(241,237,252,.5), 10vw 34vh 0 0 rgba(196,181,253,.5), 33vw 30vh 0 0 rgba(241,237,252,.45),
+      58vw 33vh 0 0 rgba(196,181,253,.5), 81vw 36vh 0 0 rgba(241,237,252,.45), 25vw 42vh 0 0 rgba(196,181,253,.4);
+  }
+  .stars2 {
+    width: 1.5px; height: 1.5px; animation-delay: -2.2s; animation-duration: 6s;
+    box-shadow:
+      3vw 15vh 0 0 rgba(241,237,252,.5), 11vw 3vh 0 0 rgba(196,181,253,.45), 18vw 28vh 0 0 rgba(241,237,252,.4),
+      27vw 11vh 0 0 rgba(241,237,252,.5), 35vw 24vh 0 0 rgba(196,181,253,.4), 42vw 3vh 0 0 rgba(241,237,252,.45),
+      50vw 27vh 0 0 rgba(196,181,253,.35), 57vw 9vh 0 0 rgba(241,237,252,.5), 65vw 5vh 0 0 rgba(196,181,253,.45),
+      73vw 17vh 0 0 rgba(241,237,252,.4), 80vw 28vh 0 0 rgba(196,181,253,.35), 88vw 12vh 0 0 rgba(241,237,252,.5),
+      94vw 20vh 0 0 rgba(196,181,253,.4), 47vw 38vh 0 0 rgba(241,237,252,.35), 68vw 41vh 0 0 rgba(196,181,253,.3);
+  }
+  @keyframes twinkle { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+
+  .watermark {
+    position: absolute; left: 50%; top: 50%; width: min(760px, 140vw);
+    transform: translate(-50%, -53%);
+    opacity: .045; filter: blur(1.5px); pointer-events: none; user-select: none;
+  }
+
+  .hills { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 26vh; display: block; }
+
+  .ff {
+    position: absolute; width: 5px; height: 5px; border-radius: 50%;
+    background: #fbbf24; box-shadow: 0 0 10px 3px rgba(251, 191, 36, .55);
+    opacity: 0; animation: drift 11s ease-in-out infinite;
+  }
+  .ff:nth-child(1) { left: 12%; bottom: 18vh; animation-delay: 0s; }
+  .ff:nth-child(2) { left: 26%; bottom: 10vh; animation-delay: -2.5s; animation-duration: 13s; }
+  .ff:nth-child(3) { left: 44%; bottom: 14vh; animation-delay: -5s; }
+  .ff:nth-child(4) { left: 63%; bottom: 9vh;  animation-delay: -7.5s; animation-duration: 14s; }
+  .ff:nth-child(5) { left: 78%; bottom: 16vh; animation-delay: -9s; }
+  .ff:nth-child(6) { left: 90%; bottom: 11vh; animation-delay: -4s; animation-duration: 12s; }
+  @keyframes drift {
+    0%, 100% { transform: translate(0, 0); opacity: 0; }
+    12% { opacity: .9; }
+    50% { transform: translate(26px, -48px); opacity: .55; }
+    82% { opacity: .85; }
+    99% { transform: translate(-14px, -84px); opacity: 0; }
+  }
+
+  .vignette {
+    position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(125% 95% at 50% 42%, transparent 55%, rgba(9, 5, 18, .6));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .glow, .stars, .stars2, .ff { animation: none; }
+    .ff { opacity: .6; }
+  }
+
+  /* ---------- the card ---------- */
   .login-page {
+    position: relative; z-index: 1;
     min-height: 100vh;
     display: flex; align-items: center; justify-content: center;
     padding: 20px;
   }
   .login-card {
+    position: relative;
     width: 100%; max-width: 400px;
     background: linear-gradient(170deg, var(--card-soft), var(--card) 70%);
     border: 1px solid var(--line-strong);
     border-radius: 20px;
     padding: 38px 36px 34px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, .45), 0 0 60px rgba(124, 58, 237, .18);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .5), 0 0 80px rgba(124, 58, 237, .22);
+  }
+  .login-card::before { /* thin gold-to-violet hairline along the top edge */
+    content: ''; position: absolute; top: 0; left: 24px; right: 24px; height: 1.5px;
+    background: linear-gradient(90deg, transparent, rgba(251, 191, 36, .55), rgba(167, 139, 250, .55), transparent);
+    border-radius: 2px;
   }
   .login-brand { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 28px; text-align: center; }
   .login-brand .login-crest {
@@ -53,6 +139,23 @@
 </style>
 </head>
 <body>
+<div class="login-bg" aria-hidden="true">
+  <div class="glow g1"></div>
+  <div class="glow g2"></div>
+  <div class="glow g3"></div>
+  <div class="stars"></div>
+  <div class="stars2"></div>
+  <img class="watermark" src="logo.svg" alt="">
+  <svg class="hills" viewBox="0 0 1440 320" preserveAspectRatio="none">
+    <path fill="#1c1338" d="M0 205 C220 145 430 245 720 205 C1010 165 1210 235 1440 185 L1440 320 0 320 Z"/>
+    <path fill="#241a44" d="M0 262 C280 212 520 292 820 257 C1100 227 1280 287 1440 252 L1440 320 0 320 Z"/>
+    <path fill="none" stroke="rgba(251,191,36,.28)" stroke-width="2"
+          d="M0 262 C280 212 520 292 820 257 C1100 227 1280 287 1440 252"/>
+  </svg>
+  <span class="ff"></span><span class="ff"></span><span class="ff"></span>
+  <span class="ff"></span><span class="ff"></span><span class="ff"></span>
+  <div class="vignette"></div>
+</div>
 <div class="login-page">
   <form class="login-card" id="loginForm">
     <div class="login-brand">
