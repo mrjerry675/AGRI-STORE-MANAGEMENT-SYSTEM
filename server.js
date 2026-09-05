@@ -54,6 +54,7 @@ const SALESMAN_ALLOW = [
   ['GET', /^\/myday$/],
   ['GET', /^\/sales$/], ['POST', /^\/sales$/], ['POST', /^\/sales\/multi$/],
   ['POST', /^\/sales\/\d+\/payments$/], ['POST', /^\/sales\/\d+\/replace$/],
+  ['GET', /^\/khata$/], ['POST', /^\/khata\/pay$/],
   ['GET', /^\/replacements$/],
   ['GET', /^\/purchases$/], ['POST', /^\/purchases$/], ['POST', /^\/purchases\/\d+\/payments$/]
 ];
@@ -571,6 +572,103 @@ app.put('/api/sales/:id', async (req, res) => {
       await logAction(req, 'edited', 'sale', `Sale KD-${req.params.id} edited — ${changes.join(', ')}`);
     }
     res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------- Customer khata: every named customer's account in one place ----------
+// A customer is identified by name+phone (case-insensitive name). Sales with no
+// customer name are walk-in cash sales and stay out of the khata.
+async function buildKhata() {
+  const { rows } = await pool.query(`
+    SELECT s.id, to_char(s.sale_date, 'YYYY-MM-DD') AS sale_date, s.qty, s.sale_price,
+           s.customer_name, s.phone, s.address, s.payment, s.created_at,
+           p.name AS product_name, p.unit,
+           COALESCE(sp.paid, 0) AS paid,
+           COALESCE(sr.rqty, 0) AS returned,
+           COALESCE(sr.refunded, 0) AS refunded
+    FROM sales s
+    JOIN products p ON p.id = s.product_id
+    LEFT JOIN (SELECT sale_id, SUM(amount) paid FROM sale_payments GROUP BY sale_id) sp ON sp.sale_id = s.id
+    LEFT JOIN (SELECT sale_id, SUM(qty) rqty, SUM(refund) refunded FROM sale_returns GROUP BY sale_id) sr ON sr.sale_id = s.id
+    WHERE TRIM(s.customer_name) <> ''
+    ORDER BY s.sale_date, s.id`);
+
+  const groups = {};
+  rows.forEach(r => {
+    const key = r.customer_name.trim().toLowerCase() + '|' + String(r.phone || '').trim();
+    const g = groups[key] || (groups[key] = {
+      key, name: r.customer_name.trim(), phone: String(r.phone || '').trim(),
+      address: '', salesCount: 0, totalBought: 0, totalPaid: 0, due: 0,
+      lastSale: null, unpaid: []
+    });
+    const effTotal = (num(r.qty) - num(r.returned)) * num(r.sale_price);
+    const paidNet = num(r.paid) - num(r.refunded);
+    const due = effTotal - paidNet;
+    g.salesCount++;
+    g.totalBought += effTotal;
+    g.totalPaid += paidNet;
+    if (due > 0.001) {
+      g.due += due;
+      g.unpaid.push({
+        id: r.id, date: r.sale_date, product: r.product_name, unit: r.unit,
+        qty: num(r.qty) - num(r.returned), total: effTotal, paid: paidNet, due
+      });
+    }
+    if (String(r.address || '').trim()) g.address = r.address.trim();
+    g.lastSale = r.sale_date; // rows come oldest-first, so the last write wins
+  });
+
+  return Object.values(groups).sort((a, b) => b.due - a.due || a.name.localeCompare(b.name));
+}
+
+app.get('/api/khata', async (req, res) => {
+  try { res.json(await buildKhata()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Collect one payment from a customer and spread it over their unpaid bills,
+// oldest first — the way a paper khata is settled.
+app.post('/api/khata/pay', async (req, res) => {
+  try {
+    const { name, phone, amount, pay_date, method } = req.body;
+    if (!String(name || '').trim()) return res.status(400).json({ error: 'Customer name is required' });
+    if (num(amount) <= 0) return res.status(400).json({ error: 'Amount must be more than 0' });
+    if (!pay_date) return res.status(400).json({ error: 'Payment date is required' });
+    if (isSalesman(req) && pay_date !== localStamp()) {
+      return res.status(400).json({ error: 'Salesman accounts can only record payments for today' });
+    }
+
+    const khata = await buildKhata();
+    const key = String(name).trim().toLowerCase() + '|' + String(phone || '').trim();
+    const cust = khata.find(g => g.key === key);
+    if (!cust) return res.status(404).json({ error: 'No khata found for this customer' });
+    if (num(amount) > cust.due + 0.001) {
+      return res.status(400).json({ error: `${cust.name} only owes ${fRs(cust.due)} — cannot receive more than that` });
+    }
+
+    const via = method || 'Cash';
+    const c = await pool.connect();
+    const filled = [];
+    try {
+      await c.query('BEGIN');
+      let left = num(amount);
+      for (const bill of cust.unpaid) { // already oldest-first
+        if (left <= 0.001) break;
+        const put = Math.min(left, bill.due);
+        await c.query(
+          'INSERT INTO sale_payments (sale_id, pay_date, amount, method) VALUES ($1, $2, $3, $4)',
+          [bill.id, pay_date, put, via]);
+        filled.push(`KD-${bill.id} ${fRs(put)}`);
+        left -= put;
+      }
+      await c.query('COMMIT');
+    } catch (e) { await c.query('ROLLBACK'); throw e; }
+    finally { c.release(); }
+
+    await logAction(req, 'payment', 'khata',
+      `Udhaar collected: ${fRs(amount)} from ${cust.name}${cust.phone ? ` (${cust.phone})` : ''} via ${via}` +
+      ` — spread over ${filled.length} bill(s): ${filled.join(', ')}. Remaining due: ${fRs(cust.due - num(amount))}`);
+    res.json({ ok: true, bills: filled.length, remainingDue: cust.due - num(amount) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

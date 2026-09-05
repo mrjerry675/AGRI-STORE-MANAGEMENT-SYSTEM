@@ -31,6 +31,7 @@
       <button class="nav-btn" data-page="products">🏷️ <span>Products</span></button>
       <button class="nav-btn" data-page="stockin">📦 <span>Purchases</span></button>
       <button class="nav-btn" data-page="sales">🧾 <span>Sales</span></button>
+      <button class="nav-btn" data-page="khata">📗 <span>Khata / Udhaar</span></button>
       <button class="nav-btn" data-page="register">📒 <span>Full Register</span></button>
       <button class="nav-btn" data-page="partners">🤝 <span>Partners</span></button>
       <button class="nav-btn" data-page="expenses">💸 <span>Expenses</span></button>
@@ -462,6 +463,37 @@
               <tr><th>Date</th><th>Receipt</th><th>Customer</th><th>Product</th><th class="r">Qty</th><th class="r">Refund Given</th><th>Via</th><th>Reason</th><th></th></tr>
             </thead>
             <tbody id="returnRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== KHATA / UDHAAR ===== -->
+    <section class="page" id="page-khata">
+      <div class="page-head">
+        <div>
+          <h1>Khata / Udhaar <button class="icon-refresh" title="Refresh this page">🔄</button></h1>
+          <p class="subtitle">Every customer's account — what they bought, paid, and still owe</p>
+        </div>
+        <div class="today-pill" id="khataTotalsPill"></div>
+      </div>
+
+      <div class="card">
+        <div class="search-row">
+          <input type="text" id="khataSearch" class="search-box"
+                 placeholder="🔍 Search by name or phone…" autocomplete="off">
+          <button class="btn-ghost" id="khataSearchClear" style="display:none">✖ Clear</button>
+        </div>
+        <div class="filter-chips" id="khataChips">
+          <button class="chip active" data-view="due">📕 With Dues</button>
+          <button class="chip" data-view="all">👥 All Customers</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Customer</th><th>Phone</th><th>Address</th><th class="r">Bills</th><th class="r">Total Bought</th><th class="r">Paid</th><th class="r">Outstanding</th><th>Last Sale</th><th></th></tr>
+            </thead>
+            <tbody id="khataRows"></tbody>
           </table>
         </div>
       </div>
@@ -942,6 +974,36 @@
     <div class="modal-actions">
       <button class="btn-primary" id="refSave">↩ Save Refund</button>
       <button class="btn-ghost" id="refCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="khataPayModal">
+  <div class="modal">
+    <h2 class="card-title">📗 Receive Udhaar Payment</h2>
+    <p class="pay-info" id="khataPayInfo"></p>
+    <div class="field">
+      <label>Amount Received (Rs)</label>
+      <input type="number" id="kpAmount" min="0" step="any" placeholder="0">
+      <div class="hint" id="kpHint"></div>
+    </div>
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="kpDate">
+    </div>
+    <div class="field">
+      <label>Received Via</label>
+      <select id="kpMethod">
+        <option>Cash</option>
+        <option>JazzCash / Easypaisa</option>
+        <option>Bank Alfalah</option>
+        <option>Bank of Punjab</option>
+        <option>Meezan Bank</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-primary" id="kpSave">💰 Receive Payment</button>
+      <button class="btn-ghost" id="kpCancel">Cancel</button>
     </div>
   </div>
 </div>

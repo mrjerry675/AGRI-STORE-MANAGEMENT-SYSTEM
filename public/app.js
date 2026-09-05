@@ -169,6 +169,7 @@ function refresh(page) {
   if (page === 'products') loadProducts();
   if (page === 'stockin') { loadProductOptions(); loadPurchases(); }
   if (page === 'sales') { loadProductOptions(); loadSales(); loadReplacements(); loadMyDay(); if (isAdmin()) loadReturns(); }
+  if (page === 'khata') loadKhata();
   if (page === 'register') { loadProductOptions(); loadRegister(); }
   if (page === 'partners') { loadPartners(); loadInvestments(); fillInvestProducts(); }
   if (page === 'expenses') loadExpenses();
@@ -1735,6 +1736,134 @@ function renderRegister() {
       ? 'No ' + esc(registerCatFilter.toLowerCase()) + ' entries in this view'
       : 'No entries yet — record purchases and sales first'}</td></tr>`;
 }
+
+// ---------- customer khata / udhaar list ----------
+let khataCache = [];
+let khataView = 'due';
+let khataSearchTerm = '';
+let khataExpanded = null;  // key of the customer whose bills are unfolded
+let khataPayTarget = null;
+
+async function loadKhata() {
+  try {
+    khataCache = await api('/api/khata');
+    const withDues = khataCache.filter(c => c.due > 0.001);
+    const totalDue = withDues.reduce((s, c) => s + c.due, 0);
+    $('khataTotalsPill').textContent = withDues.length
+      ? `${withDues.length} customer${withDues.length === 1 ? '' : 's'} owe ${rs(totalDue)}`
+      : 'No udhaar outstanding ✔';
+    renderKhata();
+  } catch (e) { toast(e.message, true); }
+}
+
+function renderKhata() {
+  let rows = khataView === 'due' ? khataCache.filter(c => c.due > 0.001) : khataCache;
+  if (khataSearchTerm) {
+    rows = rows.filter(c =>
+      c.name.toLowerCase().includes(khataSearchTerm) ||
+      (c.phone || '').toLowerCase().includes(khataSearchTerm));
+  }
+  $('khataRows').innerHTML = rows.length ? rows.map(c => {
+    const open = khataExpanded === c.key;
+    return `<tr class="khata-row" onclick="toggleKhata('${jsq(c.key)}')">
+      <td class="b">${c.unpaid.length ? (open ? '▾ ' : '▸ ') : ''}${esc(c.name)}</td>
+      <td>${esc(c.phone)}</td>
+      <td>${esc(c.address)}</td>
+      <td class="r">${c.salesCount}</td>
+      <td class="r">${rs(c.totalBought)}</td>
+      <td class="r">${rs(c.totalPaid)}</td>
+      <td class="r">${c.due > 0.001 ? `<span class="due b">${rs(c.due)}</span>` : '<span class="paid-ok">✓ Clear</span>'}</td>
+      <td>${fmtDate(c.lastSale)}</td>
+      <td>${c.due > 0.001 ? `<button class="pay-btn" onclick="event.stopPropagation(); openKhataPay('${jsq(c.key)}')">💰 Receive</button>` : ''}</td>
+    </tr>` + (open && c.unpaid.length ? `<tr class="khata-detail"><td colspan="9">
+      <table class="khata-bills">
+        <tr><th>Date</th><th>Receipt</th><th>Product</th><th class="r">Qty</th><th class="r">Bill</th><th class="r">Paid</th><th class="r">Still Due</th></tr>
+        ${c.unpaid.map(b => `<tr>
+          <td>${fmtDate(b.date)}</td><td class="b">KD-${b.id}</td><td>${esc(b.product)}</td>
+          <td class="r">${qty(b.qty)} ${esc(b.unit)}</td>
+          <td class="r">${rs(b.total)}</td><td class="r">${rs(b.paid)}</td>
+          <td class="r"><span class="due">${rs(b.due)}</span></td>
+        </tr>`).join('')}
+      </table></td></tr>` : '');
+  }).join('') : `<tr><td colspan="9" class="empty-row">${khataSearchTerm
+    ? 'No customer matching "' + esc(khataSearchTerm) + '"'
+    : khataView === 'due' ? 'Nobody owes anything — the khata is clear ✔' : 'No named customers yet'}</td></tr>`;
+}
+
+function toggleKhata(key) {
+  khataExpanded = khataExpanded === key ? null : key;
+  renderKhata();
+}
+
+$('khataChips').addEventListener('click', ev => {
+  const btn = ev.target.closest('.chip');
+  if (!btn) return;
+  khataView = btn.dataset.view;
+  document.querySelectorAll('#khataChips .chip').forEach(c => c.classList.toggle('active', c === btn));
+  renderKhata();
+});
+$('khataSearch').addEventListener('input', () => {
+  khataSearchTerm = $('khataSearch').value.trim().toLowerCase();
+  $('khataSearchClear').style.display = khataSearchTerm ? '' : 'none';
+  renderKhata();
+});
+$('khataSearchClear').addEventListener('click', () => {
+  $('khataSearch').value = ''; khataSearchTerm = '';
+  $('khataSearchClear').style.display = 'none';
+  renderKhata(); $('khataSearch').focus();
+});
+
+function openKhataPay(key) {
+  const c = khataCache.find(x => x.key === key);
+  if (!c) return;
+  khataPayTarget = c;
+  $('khataPayInfo').innerHTML =
+    `<b>${esc(c.name)}</b>${c.phone ? ` (${esc(c.phone)})` : ''} owes <b class="due">${rs(c.due)}</b> across ${c.unpaid.length} bill(s).<br>` +
+    `<span class="share">The amount settles their oldest bills first — like a paper khata.</span>`;
+  $('kpAmount').value = c.due;
+  $('kpDate').value = todayISO();
+  $('kpDate').disabled = !isAdmin();
+  $('kpMethod').value = 'Cash';
+  updateKpHint();
+  $('khataPayModal').classList.add('show');
+  $('kpAmount').focus();
+}
+
+function updateKpHint() {
+  if (!khataPayTarget) return;
+  const a = parseFloat($('kpAmount').value) || 0;
+  if (a <= 0) { $('kpHint').textContent = ''; return; }
+  if (a > khataPayTarget.due + 0.001) {
+    $('kpHint').innerHTML = `<span class="due">✖ They only owe ${rs(khataPayTarget.due)}</span>`;
+  } else {
+    const left = khataPayTarget.due - a;
+    $('kpHint').innerHTML = left > 0.001
+      ? `Remaining due after this: <b>${rs(left)}</b>`
+      : `<span class="paid-ok">✓ Clears their whole khata</span>`;
+  }
+}
+$('kpAmount').addEventListener('input', updateKpHint);
+
+function closeKhataPay() { $('khataPayModal').classList.remove('show'); khataPayTarget = null; }
+$('kpCancel').addEventListener('click', closeKhataPay);
+$('khataPayModal').addEventListener('click', ev => { if (ev.target === $('khataPayModal')) closeKhataPay(); });
+
+$('kpSave').addEventListener('click', async () => {
+  if (!khataPayTarget) return;
+  if (!checkPos($('kpAmount').value, 'Amount')) return;
+  if (!checkNotFuture($('kpDate').value, 'Payment date')) return;
+  try {
+    const r = await post('/api/khata/pay', {
+      name: khataPayTarget.name, phone: khataPayTarget.phone,
+      amount: $('kpAmount').value, pay_date: $('kpDate').value, method: $('kpMethod').value
+    });
+    toast(r.remainingDue > 0.001
+      ? `Payment received ✔ — ${rs(r.remainingDue)} still due`
+      : 'Payment received ✔ — khata clear');
+    closeKhataPay();
+    refreshCurrentPage();
+  } catch (e) { toast(e.message, true); }
+});
 
 $('regApply').addEventListener('click', loadRegister);
 $('regClear').addEventListener('click', () => {
