@@ -460,15 +460,9 @@ $('productSearchClear').addEventListener('click', () => {
   $('productSearch').focus();
 });
 
-function fillProductDatalist() {
-  $('productNames').innerHTML = productListCache
-    .map(p => `<option value="${esc(p.name)}">`).join('');
-}
-
 async function loadProducts() {
   try {
     productListCache = await api('/api/products');
-    fillProductDatalist();
     renderProducts();
   } catch (e) { toast(e.message, true); }
 }
@@ -567,7 +561,6 @@ async function loadProductOptions() {
     keep($('buyProduct'), '<option value="">— choose product —</option>');
     keep($('sellProduct'), '<option value="">— choose product —</option>');
     keep($('regProduct'), '<option value="">All products</option>');
-    $('saleProducts').innerHTML = productCache.map(p => `<option value="${esc(p.name)}">`).join('');
   } catch (e) { /* server not ready */ }
 }
 
@@ -641,15 +634,9 @@ $('purchaseSearchClear').addEventListener('click', () => {
   $('purchaseSearch').focus();
 });
 
-function fillPurchaseDatalist() {
-  const names = [...new Set(purchaseCache.map(r => r.name))].sort();
-  $('purchaseProductNames').innerHTML = names.map(n => `<option value="${esc(n)}">`).join('');
-}
-
 async function loadPurchases() {
   try {
     purchaseCache = await api('/api/purchases');
-    fillPurchaseDatalist();
     const today = todayISO();
     const todayTotal = purchaseCache
       .filter(r => String(r.purchase_date).slice(0, 10) === today)
@@ -752,15 +739,9 @@ $('saleSearchClear').addEventListener('click', () => {
   $('saleSearch').focus();
 });
 
-function fillCustomerDatalist() {
-  const names = [...new Set(saleCache.map(r => r.customer_name).filter(n => n && n.trim()))].sort();
-  $('customerNames').innerHTML = names.map(n => `<option value="${esc(n)}">`).join('');
-}
-
 async function loadSales() {
   try {
     saleCache = await api('/api/sales');
-    fillCustomerDatalist();
     const today = todayISO();
     const todayTotal = saleCache
       .filter(r => String(r.sale_date).slice(0, 10) === today)
@@ -830,7 +811,7 @@ function extraItemRow() {
   div.className = 'form-row extra-item';
   div.innerHTML = `
     <div class="field"><label>Product</label>
-      <input type="text" class="product-search xSearch" list="saleProducts" placeholder="🔍 Type to search…" autocomplete="off">
+      <input type="text" class="product-search xSearch" placeholder="🔍 Type to search…" autocomplete="off">
       <select class="xProduct"><option value="">— choose product —</option>${productCache.map(p =>
         `<option value="${p.id}">${esc(p.name)} (${esc(p.category)})</option>`).join('')}</select>
       <div class="hint xStock"></div></div>
@@ -841,7 +822,16 @@ function extraItemRow() {
     <div class="field btn-field"><button type="button" class="btn-ghost xRemove">✖ Remove</button></div>`;
   return div;
 }
-$('addItemBtn').addEventListener('click', () => { $('extraItems').appendChild(extraItemRow()); });
+$('addItemBtn').addEventListener('click', () => {
+  const row = extraItemRow();
+  $('extraItems').appendChild(row);
+  attachProductSuggest(row.querySelector('.xSearch'), p => {
+    const sel = row.querySelector('.xProduct');
+    sel.value = p.id;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    row.querySelector('.xQty').focus();
+  });
+});
 $('extraItems').addEventListener('click', ev => {
   if (ev.target.classList.contains('xRemove')) {
     ev.target.closest('.extra-item').remove();
@@ -858,19 +848,6 @@ $('extraItems').addEventListener('input', ev => {
     }
   }
   updSellTotal();
-});
-
-$('extraItems').addEventListener('keydown', ev => {
-  if (ev.key !== 'Enter' || !ev.target.classList || !ev.target.classList.contains('xSearch')) return;
-  ev.preventDefault();
-  const p = bestProductMatch(ev.target.value);
-  if (!p) return;
-  ev.target.value = p.name;
-  const row = ev.target.closest('.extra-item');
-  const sel = row.querySelector('.xProduct');
-  sel.value = p.id;
-  sel.dispatchEvent(new Event('change', { bubbles: true }));
-  row.querySelector('.xQty').focus();
 });
 
 function gatherSaleItems() {
@@ -910,6 +887,63 @@ function bestProductMatch(t) {
          productCache.find(p => p.name.toLowerCase().includes(q)) || null;
 }
 
+// themed dropdown under a product search box (replaces the browser's plain
+// datalist popup): shows name, category and stock; ↑/↓ + Enter or click to pick
+function attachProductSuggest(input, onPick) {
+  const box = document.createElement('div');
+  box.className = 'suggest-box';
+  input.parentElement.classList.add('suggest-holder');
+  input.insertAdjacentElement('afterend', box);
+  let items = [], hi = 0;
+
+  const close = () => { box.style.display = 'none'; box.innerHTML = ''; };
+  const isOpen = () => box.style.display === 'block';
+  const render = () => {
+    if (!items.length) { close(); return; }
+    box.innerHTML = items.map((p, i) => `
+      <div class="suggest-item${i === hi ? ' hi' : ''}" data-i="${i}">
+        <span class="s-name">${esc(p.name)}</span>
+        <span class="s-meta">${badge(p.category)}<span class="s-stock${p.remaining <= 0 ? ' out' : ''}">${qty(p.remaining)} ${esc(p.unit)}</span></span>
+      </div>`).join('');
+    box.style.top = (input.offsetTop + input.offsetHeight + 4) + 'px';
+    box.style.display = 'block';
+  };
+  const update = () => {
+    const q = input.value.trim().toLowerCase();
+    const starts = [], contains = [];
+    productCache.forEach(p => {
+      const n = p.name.toLowerCase();
+      if (!q || n.startsWith(q)) starts.push(p);
+      else if (n.includes(q)) contains.push(p);
+    });
+    items = starts.concat(contains).slice(0, 8);
+    hi = 0;
+    render();
+  };
+  const pick = p => { input.value = p.name; close(); onPick(p); };
+
+  input.addEventListener('focus', update);
+  input.addEventListener('input', update);
+  input.addEventListener('keydown', ev => {
+    if (ev.key === 'ArrowDown' && isOpen()) {
+      ev.preventDefault(); hi = (hi + 1) % items.length; render();
+    } else if (ev.key === 'ArrowUp' && isOpen()) {
+      ev.preventDefault(); hi = (hi - 1 + items.length) % items.length; render();
+    } else if (ev.key === 'Enter') {
+      ev.preventDefault(); // never submit the form from the search box
+      const p = isOpen() ? items[hi] : bestProductMatch(input.value);
+      if (p) pick(p);
+    } else if (ev.key === 'Escape') close();
+  });
+  box.addEventListener('mousedown', ev => {
+    const el = ev.target.closest('.suggest-item');
+    if (!el) return;
+    ev.preventDefault(); // keep focus on the input so blur doesn't race the click
+    pick(items[+el.dataset.i]);
+  });
+  input.addEventListener('blur', () => setTimeout(close, 150));
+}
+
 $('sellSearch').addEventListener('input', () => {
   const p = findProductByText($('sellSearch').value);
   if (p) {
@@ -918,13 +952,8 @@ $('sellSearch').addEventListener('input', () => {
   }
 });
 
-// Enter accepts the best suggestion and jumps to the quantity field
-$('sellSearch').addEventListener('keydown', ev => {
-  if (ev.key !== 'Enter') return;
-  ev.preventDefault(); // don't submit the form
-  const p = bestProductMatch($('sellSearch').value);
-  if (!p) return;
-  $('sellSearch').value = p.name;
+// picking a suggestion fills the dropdown and jumps to the quantity field
+attachProductSuggest($('sellSearch'), p => {
   $('sellProduct').value = p.id;
   $('sellProduct').dispatchEvent(new Event('change'));
   $('sellQty').focus();
@@ -938,12 +967,7 @@ $('buySearch').addEventListener('input', () => {
     $('buyProduct').dispatchEvent(new Event('change'));
   }
 });
-$('buySearch').addEventListener('keydown', ev => {
-  if (ev.key !== 'Enter') return;
-  ev.preventDefault();
-  const p = bestProductMatch($('buySearch').value);
-  if (!p) return;
-  $('buySearch').value = p.name;
+attachProductSuggest($('buySearch'), p => {
   $('buyProduct').value = p.id;
   $('buyProduct').dispatchEvent(new Event('change'));
   $('buyQty').focus();

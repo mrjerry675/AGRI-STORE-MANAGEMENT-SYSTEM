@@ -214,10 +214,9 @@
       <div class="card">
         <h2 class="card-title">Product List &amp; Current Stock</h2>
         <div class="search-row">
-          <input type="text" id="productSearch" class="search-box" list="productNames"
+          <input type="text" id="productSearch" class="search-box"
                  placeholder="🔍 Search product… (e.g. ur → Urea)" autocomplete="off">
           <button class="btn-ghost" id="productSearchClear" style="display:none">✖ Clear</button>
-          <datalist id="productNames"></datalist>
         </div>
         <div class="filter-chips" id="catChips">
           <button class="chip active" data-cat="">All</button>
@@ -256,7 +255,7 @@
         <form id="purchaseForm" class="form-row">
           <div class="field">
             <label>Product</label>
-            <input type="text" id="buySearch" class="product-search" list="saleProducts"
+            <input type="text" id="buySearch" class="product-search"
                    placeholder="🔍 Type to search…" autocomplete="off">
             <select id="buyProduct" required><option value="">— choose product —</option></select>
             <div class="hint" id="buyStockHint"></div>
@@ -291,10 +290,9 @@
       <div class="card">
         <h2 class="card-title">Purchase History</h2>
         <div class="search-row">
-          <input type="text" id="purchaseSearch" class="search-box" list="purchaseProductNames"
+          <input type="text" id="purchaseSearch" class="search-box"
                  placeholder="🔍 Search by product… (e.g. ur → Urea)" autocomplete="off">
           <button class="btn-ghost" id="purchaseSearchClear" style="display:none">✖ Clear</button>
-          <datalist id="purchaseProductNames"></datalist>
         </div>
         <div class="filter-chips" id="buyChips">
           <button class="chip active" data-cat="">All</button>
@@ -331,11 +329,10 @@
           <div class="form-row">
             <div class="field">
               <label>Product</label>
-              <input type="text" id="sellSearch" class="product-search" list="saleProducts"
+              <input type="text" id="sellSearch" class="product-search"
                      placeholder="🔍 Type to search…" autocomplete="off">
               <select id="sellProduct" required><option value="">— choose product —</option></select>
               <div class="hint" id="sellStockHint"></div>
-              <datalist id="saleProducts"></datalist>
             </div>
             <div class="field">
               <label>Sale Date</label>
@@ -411,10 +408,9 @@
       <div class="card">
         <h2 class="card-title">Sales History</h2>
         <div class="search-row">
-          <input type="text" id="saleSearch" class="search-box" list="customerNames"
+          <input type="text" id="saleSearch" class="search-box"
                  placeholder="🔍 Search by customer name… (e.g. ah → Ahmed Khan)" autocomplete="off">
           <button class="btn-ghost" id="saleSearchClear" style="display:none">✖ Clear</button>
-          <datalist id="customerNames"></datalist>
         </div>
         <div class="filter-chips" id="sellChips">
           <button class="chip active" data-cat="">All</button>
