@@ -812,30 +812,36 @@
 <div class="modal-overlay" id="pwModal">
   <div class="modal">
     <h2 class="card-title">🔑 Password &amp; Staff</h2>
-    <div class="section-label">My Password</div>
-    <div class="field">
-      <label>Current Password</label>
-      <input type="password" id="pwCurrent" autocomplete="off">
-    </div>
-    <div class="field">
-      <label>New Password (at least 6 characters)</label>
-      <input type="password" id="pwNew" autocomplete="off">
-    </div>
-    <div class="modal-actions">
-      <button class="btn-primary" id="pwSave">✔ Change Password</button>
+    <div class="filter-chips" id="pwTabs" style="margin:2px 0 16px">
+      <button class="chip active" data-tab="pw">🔑 My Password</button>
+      <button class="chip" data-tab="staff">👤 Staff Accounts</button>
     </div>
 
-    <div id="staffSection">
-      <div class="section-label" style="margin-top:22px">👤 Staff Accounts</div>
-      <p class="pay-info">A salesman can only record sales, purchases, payments and returns. The log shows their name on everything they do.</p>
-      <div id="staffList" style="margin-bottom:14px"></div>
+    <div id="pwTabPw">
       <div class="field">
-        <label>New Salesman Username</label>
-        <input type="text" id="staffUser" autocomplete="off" placeholder="e.g. akram">
+        <label>Current Password</label>
+        <input type="password" id="pwCurrent" autocomplete="off">
       </div>
       <div class="field">
-        <label>Password (at least 6 characters)</label>
-        <input type="password" id="staffPw" autocomplete="off">
+        <label>New Password (at least 6 characters)</label>
+        <input type="password" id="pwNew" autocomplete="off">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-primary" id="pwSave">✔ Change Password</button>
+      </div>
+    </div>
+
+    <div id="staffSection" hidden>
+      <div id="staffList" style="margin-bottom:14px"></div>
+      <div style="display:flex;gap:10px">
+        <div class="field" style="flex:1">
+          <label>New Salesman Username</label>
+          <input type="text" id="staffUser" autocomplete="off" placeholder="e.g. akram">
+        </div>
+        <div class="field" style="flex:1">
+          <label>Password (6+ characters)</label>
+          <input type="password" id="staffPw" autocomplete="off">
+        </div>
       </div>
       <div class="modal-actions">
         <button class="btn-primary" id="staffAdd">+ Add Salesman</button>

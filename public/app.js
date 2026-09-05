@@ -2175,9 +2175,20 @@ $('logoutBtn').addEventListener('click', async () => {
   window.location.href = '/login.html';
 });
 
+function pwShowTab(tab) {
+  document.querySelectorAll('#pwTabs .chip').forEach(c => c.classList.toggle('active', c.dataset.tab === tab));
+  $('pwTabPw').hidden = tab !== 'pw';
+  $('staffSection').hidden = tab !== 'staff';
+}
+$('pwTabs').addEventListener('click', ev => {
+  const btn = ev.target.closest('.chip');
+  if (btn) pwShowTab(btn.dataset.tab);
+});
+
 $('passwordBtn').addEventListener('click', async () => {
   $('pwCurrent').value = ''; $('pwNew').value = '';
   $('staffUser').value = ''; $('staffPw').value = '';
+  pwShowTab('pw');
   try { await loadStaffList(); } catch { $('staffList').innerHTML = ''; }
   $('pwModal').classList.add('show');
   setTimeout(() => $('pwCurrent').focus(), 50);
