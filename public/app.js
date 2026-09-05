@@ -167,7 +167,7 @@ function refresh(page) {
   if (page === 'dashboard') loadDashboard();
   if (page === 'products') loadProducts();
   if (page === 'stockin') { loadProductOptions(); loadPurchases(); }
-  if (page === 'sales') { loadProductOptions(); loadSales(); loadReplacements(); loadMyDay(); }
+  if (page === 'sales') { loadProductOptions(); loadSales(); loadReplacements(); loadMyDay(); if (isAdmin()) loadReturns(); }
   if (page === 'register') { loadProductOptions(); loadRegister(); }
   if (page === 'partners') { loadPartners(); loadInvestments(); fillInvestProducts(); }
   if (page === 'expenses') loadExpenses();
@@ -776,7 +776,7 @@ function renderSales() {
       <td>${payLabel(r.payment)}</td>
       <td>${esc(r.customer_name)}</td>
       <td>${esc(r.phone)}</td>
-      <td>${r.effQty > 0.001 && withinReturnWindow(r.sale_date) ? `<button class="ret-btn" onclick="openReplace(${r.id})" title="Replace product (within 3 days)">🔁</button>` : ''}<button class="print-btn" onclick="printReceipt(${r.id})" title="Print receipt">🖨️</button>${isAdmin() ? `<button class="edit-btn" onclick="editSale(${r.id})" title="Edit">✏️</button><button class="del-btn" onclick="delSale(${r.id})">🗑️</button>` : ''}</td>
+      <td>${r.effQty > 0.001 && withinReturnWindow(r.sale_date) ? `<button class="ret-btn" onclick="openReplace(${r.id})" title="Replace product (within 3 days)">🔁</button>` : ''}${isAdmin() && r.effQty > 0.001 ? `<button class="ret-btn" onclick="openRefund(${r.id})" title="Exception refund (admin only)">↩</button>` : ''}<button class="print-btn" onclick="printReceipt(${r.id})" title="Print receipt">🖨️</button>${isAdmin() ? `<button class="edit-btn" onclick="editSale(${r.id})" title="Edit">✏️</button><button class="del-btn" onclick="delSale(${r.id})">🗑️</button>` : ''}</td>
     </tr>`).join('') : `<tr><td colspan="11" class="empty-row">${saleSearchTerm
       ? 'No sales matching "' + esc(saleSearchTerm) + '"'
       : saleCatFilter
@@ -1042,6 +1042,7 @@ $('dayCloseBtn').addEventListener('click', () => {
       <tr><td>Cash received</td><td class="r">${rs(d.cashIn)}</td></tr>
       <tr><td>Bank / wallet received</td><td class="r">${rs(d.bankIn)}</td></tr>
       <tr><td>Cash paid to suppliers</td><td class="r">− ${rs(d.supplierCashOut)}</td></tr>
+      ${d.refundsOut > 0.001 ? `<tr><td>Refunds paid out (exceptions)</td><td class="r">− ${rs(d.refundsOut)}</td></tr>` : ''}
       ${d.purchasesCount > 0 ? `<tr><td>Purchases recorded (${d.purchasesCount})</td><td class="r">${rs(d.purchasesTotal)}</td></tr>` : ''}
       <tr class="net"><td>NET CASH TO HAND OVER</td><td class="r">${rs(d.netCash)}</td></tr>
     </table>
@@ -1217,6 +1218,103 @@ $('repSave').addEventListener('click', async () => {
     refreshCurrentPage();
   } catch (e) { toast(e.message, true); }
 });
+
+// ---------- exception refunds (admin only): policy says no refunds, but the
+// owner can take goods back from relatives / trusted customers ----------
+let refundTarget = null;
+
+function openRefund(id) {
+  const r = saleCache.find(x => x.id === id);
+  if (!r) return;
+  refundTarget = r;
+  $('refundInfo').innerHTML =
+    `<b>${esc(r.name)}</b> — ${esc(r.customer_name) || 'customer'} bought ${qty(r.effQty)} ${esc(r.unit)} ` +
+    `@ ${rs(r.sale_price)} on ${fmtDate(r.sale_date)}. Paid so far: <b>${rs(r.paidNet)}</b>.<br>` +
+    `<span class="due">⚠ Official policy is NO refunds — record this only for known, trusted people. It will be logged.</span>`;
+  $('refQty').value = '';
+  $('refDate').value = todayISO();
+  $('refMethod').value = 'Cash';
+  $('refReason').value = '';
+  $('refHint').textContent = '';
+  $('refundModal').classList.add('show');
+  $('refQty').focus();
+}
+
+// same maths as the server: goods go back to stock, and whatever the customer
+// has then overpaid is handed back
+function refundPreview(q) {
+  const r = refundTarget;
+  const newTotal = (parseFloat(r.effQty) - q) * parseFloat(r.sale_price);
+  return Math.max(0, parseFloat(r.paidNet) - newTotal);
+}
+
+function updateRefundHint() {
+  if (!refundTarget) return;
+  const q = parseFloat($('refQty').value) || 0;
+  if (!q) { $('refHint').textContent = ''; return; }
+  if (q > parseFloat(refundTarget.effQty) + 0.001) {
+    $('refHint').innerHTML = `<span class="due">✖ Only ${qty(refundTarget.effQty)} ${esc(refundTarget.unit)} can be returned</span>`;
+    return;
+  }
+  const back = refundPreview(q);
+  $('refHint').innerHTML = back > 0.001
+    ? `${qty(q)} ${esc(refundTarget.unit)} back to stock — <b class="due">${rs(back)} to hand back</b>`
+    : `<span class="paid-ok">${qty(q)} ${esc(refundTarget.unit)} back to stock — no money out, their due reduces instead</span>`;
+}
+$('refQty').addEventListener('input', updateRefundHint);
+
+function closeRefund() { $('refundModal').classList.remove('show'); refundTarget = null; }
+$('refCancel').addEventListener('click', closeRefund);
+$('refundModal').addEventListener('click', ev => { if (ev.target === $('refundModal')) closeRefund(); });
+
+$('refSave').addEventListener('click', async () => {
+  if (!refundTarget) return;
+  if (!checkPos($('refQty').value, 'Return quantity')) return;
+  if (!checkNotFuture($('refDate').value, 'Return date')) return;
+  if (!$('refReason').value.trim()) { toast('A reason is required for a refund exception', true); return; }
+  const q = parseFloat($('refQty').value);
+  const back = refundPreview(q);
+  const who = refundTarget.customer_name || 'this customer';
+  $('refundModal').classList.remove('show');
+  const ok = await uiConfirm('↩ Refund Exception?',
+    `Take back <b>${qty(q)} ${esc(refundTarget.unit)} ${esc(refundTarget.name)}</b> from <b>${esc(who)}</b>?<br><br>` +
+    (back > 0.001 ? `<b class="due">${rs(back)}</b> will be handed back via ${esc($('refMethod').value)}.` : 'No money goes out — their due amount reduces.') +
+    `<br><br>This is an exception to the no-refund policy and will be logged.`, 'Yes, Refund');
+  if (!ok) { $('refundModal').classList.add('show'); return; }
+  try {
+    const r = await post(`/api/sales/${refundTarget.id}/returns`, {
+      qty: $('refQty').value, return_date: $('refDate').value,
+      method: $('refMethod').value, reason: $('refReason').value.trim()
+    });
+    toast(r.refundGiven > 0.001 ? `Refund saved ✔ — hand back ${rs(r.refundGiven)}` : 'Return saved ✔ — due amount reduced');
+    closeRefund();
+    refreshCurrentPage();
+  } catch (e) { toast(e.message, true); $('refundModal').classList.add('show'); }
+});
+
+async function loadReturns() {
+  try {
+    const rows = await api('/api/returns');
+    $('returnRows').innerHTML = rows.length ? rows.map(r => `<tr>
+      <td>${fmtDate(r.return_date)}</td>
+      <td class="b">KD-${r.sale_id}</td>
+      <td>${esc(r.customer_name)}</td>
+      <td>${esc(r.product_name)} ${badge(r.category)}</td>
+      <td class="r b">${qty(r.qty)} ${esc(r.unit)}</td>
+      <td class="r">${parseFloat(r.refund) > 0.001 ? `<span class="due">${rs(r.refund)}</span>` : '—'}</td>
+      <td>${parseFloat(r.refund) > 0.001 ? payLabel(r.method) : ''}</td>
+      <td>${esc(r.reason)}</td>
+      <td><button class="del-btn" onclick="undoReturn(${r.id})" title="Undo this return">🗑️</button></td>
+    </tr>`).join('') : '<tr><td colspan="9" class="empty-row">No refund exceptions — policy holding ✔</td></tr>';
+  } catch (e) { toast(e.message, true); }
+}
+
+async function undoReturn(id) {
+  if (!(await uiConfirm('Undo Return?',
+    'The goods will count as sold again and any refund on this return is cancelled in the books.<br>Only do this if the entry was a mistake.'))) return;
+  try { await api('/api/returns/' + id, { method: 'DELETE' }); toast('Return undone'); refreshCurrentPage(); }
+  catch (e) { toast(e.message, true); }
+}
 
 async function loadReplacements() {
   try {
@@ -1759,7 +1857,7 @@ let logSearchTerm = '';
 const MAIN_ACTIONS = ['created', 'deleted', 'edited', 'payment', 'return'];
 const LOG_LABEL = {
   created: '✔ Saved', deleted: '🗑 Deleted', edited: '✏ Edited',
-  payment: '💰 Payment', return: '🔁 Replacement',
+  payment: '💰 Payment', return: '↩ Return/Replace',
   login: '🔓 Login', password: '🔑 Password', restore: '📦 Restore'
 };
 
@@ -1993,7 +2091,7 @@ $('pwNew').addEventListener('keydown', ev => { if (ev.key === 'Enter') $('pwSave
       const b = document.querySelector(`.nav-btn[data-page="${p}"]`);
       if (b) b.style.display = 'none';
     });
-    ['backupBtn', 'importBtn', 'passwordBtn'].forEach(id => { $(id).style.display = 'none'; });
+    ['backupBtn', 'importBtn', 'passwordBtn', 'returnsCard'].forEach(id => { $(id).style.display = 'none'; });
     // salesman records for today only — dates are fixed
     $('sellDate').value = todayISO(); $('sellDate').disabled = true;
     $('buyDate').value = todayISO(); $('buyDate').disabled = true;

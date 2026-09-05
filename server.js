@@ -47,8 +47,8 @@ app.use('/api', (req, res, next) => {
 });
 
 // Role wall: a salesman can only record daily business — sales, purchases,
-// payments and returns. Everything else (deletes, edits, money overviews,
-// partners, expenses, logs, backups, staff) is admin-only.
+// payments and replacements. Everything else (deletes, edits, refunds, money
+// overviews, partners, expenses, logs, backups, staff) is admin-only.
 const SALESMAN_ALLOW = [
   ['GET', /^\/products$/],
   ['GET', /^\/myday$/],
@@ -578,30 +578,29 @@ async function saleFinances(saleId) {
   return rows[0];
 }
 
-// Record a return: qty goes back to stock and the sale total shrinks.
-// If the customer had overpaid, that amount is automatically recorded as
-// a cash refund so the books stay balanced — no options to choose.
+// EXCEPTION refund (admin only): official shop policy is no refunds — only
+// 3-day replacements. But for close relatives and trusted customers the owner
+// can take goods back. There is no day limit, a reason is required, and the
+// exception is logged loudly. The qty goes back to stock; whatever the
+// customer has then overpaid is handed back so the books stay balanced.
+const REFUND_METHODS = ['Cash', 'JazzCash / Easypaisa', 'Bank Alfalah', 'Bank of Punjab', 'Meezan Bank'];
+
 app.post('/api/sales/:id/returns', async (req, res) => {
   try {
-    const { qty, return_date, reason } = req.body;
+    if (isSalesman(req)) {
+      return res.status(403).json({ error: 'Only the admin can make a refund exception — the shop policy is no refunds' });
+    }
+    const { qty, return_date, reason, method } = req.body;
     if (num(qty) <= 0) return res.status(400).json({ error: 'Return quantity must be more than 0' });
     if (!return_date) return res.status(400).json({ error: 'Return date is required' });
-    if (isSalesman(req) && return_date !== localStamp()) {
-      return res.status(400).json({ error: 'Salesman accounts can only record returns for today' });
+    if (!String(reason || '').trim()) {
+      return res.status(400).json({ error: 'A reason is required — this is an exception to the no-refund policy' });
     }
 
     const f = await saleFinances(req.params.id);
     if (!f) return res.status(404).json({ error: 'Sale not found' });
-
-    // shop policy: returns are only accepted within 3 days of the sale
-    const RETURN_DAYS = 3;
     const diffDays = (new Date(return_date + 'T00:00:00') - new Date(f.sale_date + 'T00:00:00')) / 86400000;
     if (diffDays < 0) return res.status(400).json({ error: 'Return date cannot be before the sale date' });
-    if (diffDays > RETURN_DAYS) {
-      return res.status(400).json({
-        error: `Returns are only accepted within ${RETURN_DAYS} days of the sale — this sale was on ${f.sale_date}, so the last day for returns was ${new Date(new Date(f.sale_date).getTime() + RETURN_DAYS * 86400000).toISOString().slice(0, 10)}`
-      });
-    }
 
     const keptSoFar = num(f.qty) - num(f.returned);
     if (num(qty) > keptSoFar + 0.001) {
@@ -611,17 +610,19 @@ app.post('/api/sales/:id/returns', async (req, res) => {
     const newTotal = (keptSoFar - num(qty)) * num(f.sale_price);
     const paidNet = num(f.paid) - num(f.refunded);
     const refund = Math.max(0, paidNet - newTotal);
+    const via = REFUND_METHODS.includes(method) ? method : 'Cash';
 
     const { rows } = await pool.query(
       `INSERT INTO sale_returns (sale_id, return_date, qty, refund, method, reason)
-       VALUES ($1, $2, $3, $4, 'Cash', $5) RETURNING *`,
-      [req.params.id, return_date, qty, refund, reason || '']);
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [req.params.id, return_date, qty, refund, via, String(reason).trim()]);
     await logAction(req, 'return', 'sale',
-      `Return on KD-${req.params.id}: ${num(qty)} ${f.unit} ${f.pname} back to stock` +
+      `EXCEPTION REFUND on KD-${req.params.id} (no-refund policy waived by admin): ` +
+      `${num(qty)} ${f.unit} ${f.pname} back to stock` +
       (f.customer_name ? ` from ${f.customer_name}` : '') +
-      (refund > 0.001 ? `, ${fRs(refund)} given back` : ', due amount reduced') +
-      (reason ? ` — ${reason}` : ''));
-    res.json(rows[0]);
+      (refund > 0.001 ? `, ${fRs(refund)} paid back via ${via}` : ', due amount reduced instead — no money out') +
+      ` — ${String(reason).trim()}`);
+    res.json({ ...rows[0], refundGiven: refund });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
