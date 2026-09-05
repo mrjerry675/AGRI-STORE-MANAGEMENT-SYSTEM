@@ -55,7 +55,7 @@ const SALESMAN_ALLOW = [
   ['GET', /^\/sales$/], ['POST', /^\/sales$/], ['POST', /^\/sales\/multi$/],
   ['POST', /^\/sales\/\d+\/payments$/], ['POST', /^\/sales\/\d+\/replace$/],
   ['GET', /^\/khata$/], ['POST', /^\/khata\/pay$/],
-  ['GET', /^\/settings\/wa_deals$/],
+  ['GET', /^\/settings\/wa_deals$/], ['GET', /^\/settings\/card_pct$/],
   ['GET', /^\/cards$/],
   ['GET', /^\/replacements$/],
   ['GET', /^\/purchases$/], ['POST', /^\/purchases$/], ['POST', /^\/purchases\/\d+\/payments$/]
@@ -503,7 +503,7 @@ app.get('/api/sales', async (req, res) => {
 // The card is matched by phone number at sale time, so the discount can never
 // be forgotten or faked from the form. The discounted price is what gets
 // stored on the sale, so every calculation stays exact with no special cases.
-const KISAN_CARD_PCT = 10;
+let KISAN_CARD_PCT = 10; // editable by the admin — endpoints live in the settings section
 const digitsOf = v => String(v || '').replace(/\D/g, '');
 
 async function findKisanCard(phone) {
@@ -657,6 +657,35 @@ app.put('/api/settings/wa_deals', async (req, res) => {
     await logAction(req, 'edited', 'settings',
       value ? `WhatsApp deals line updated: "${value}"` : 'WhatsApp deals line cleared');
     res.json({ ok: true, value });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// the Kisan Card discount percentage, loaded once at startup
+const loadCardPct = ensureSettings.then(async () => {
+  const { rows } = await pool.query(`SELECT value FROM settings WHERE key = 'card_pct'`);
+  if (rows.length && num(rows[0].value) >= 0 && num(rows[0].value) <= 90) KISAN_CARD_PCT = num(rows[0].value);
+}).catch(e => console.error('card pct load:', e.message));
+
+app.get('/api/settings/card_pct', async (req, res) => {
+  try { await loadCardPct; res.json({ value: KISAN_CARD_PCT }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// changing the percentage touches FUTURE sales only — every past sale keeps
+// the price it was actually sold at
+app.put('/api/settings/card_pct', async (req, res) => {
+  try {
+    const v = num(req.body.value);
+    if (!(v >= 0 && v <= 90)) return res.status(400).json({ error: 'Discount must be between 0 and 90 percent' });
+    await ensureSettings;
+    await pool.query(
+      `INSERT INTO settings (key, value) VALUES ('card_pct', $1)
+       ON CONFLICT (key) DO UPDATE SET value = $1`, [String(v)]);
+    const old = KISAN_CARD_PCT;
+    KISAN_CARD_PCT = v;
+    await logAction(req, 'edited', 'settings',
+      `Kisan Card discount changed: ${old}% → ${v}% (applies to future sales only)`);
+    res.json({ ok: true, value: v });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

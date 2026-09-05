@@ -748,8 +748,12 @@ $('saleSearchClear').addEventListener('click', () => {
 // Kisan Card holders — 10% discount, matched by phone (server applies it;
 // this cache is only for showing the discount before saving)
 let cardsCache = [];
+let cardPct = 10; // kept in step with the server's setting
 async function loadCards() {
-  try { cardsCache = await api('/api/cards'); } catch { /* keep old */ }
+  try {
+    cardsCache = await api('/api/cards');
+    cardPct = (await api('/api/settings/card_pct')).value;
+  } catch { /* keep old */ }
 }
 const cardFor = phone => {
   const d = String(phone || '').replace(/\D/g, '');
@@ -859,11 +863,13 @@ const phoneDigits = v => String(v || '').replace(/\D/g, '');
 // offer to issue one right here — the discount then applies to THIS sale too
 function cardNote(phone) {
   if (cardFor(phone)) {
-    return `<br><span style="color:var(--gold);font-weight:600">💳 Kisan Card — 10% discount applied automatically</span>`;
+    return cardPct > 0
+      ? `<br><span style="color:var(--gold);font-weight:600">💳 Kisan Card — ${cardPct}% discount applied automatically</span>`
+      : '';
   }
   if (isAdmin() && phoneDigits(phone).length >= 7) {
     return `<br><button type="button" class="btn-ghost" style="margin-top:5px;font-size:12.5px;padding:3px 10px" ` +
-      `onclick="issueCardFromSale()">💳 Issue Kisan Card — 10% off from this sale</button>`;
+      `onclick="issueCardFromSale()">💳 Issue Kisan Card — ${cardPct}% off from this sale</button>`;
   }
   return '';
 }
@@ -877,7 +883,7 @@ async function issueCardFromSale() {
   if (!isName(name)) { toast('Customer name should have letters only — no numbers', true); return; }
   const ok = await uiConfirm('💳 Issue Kisan Card?',
     `Give <b>${esc(name)}</b> (${esc(phone)}) a Kisan Card?<br><br>` +
-    `They get <b>10% off automatically</b> starting with THIS sale, and the card shows on their khata from now on.`,
+    `They get <b>${cardPct}% off automatically</b> starting with THIS sale, and the card shows on their khata from now on.`,
     '💳 Issue Card', false);
   if (!ok) return;
   try {
@@ -979,10 +985,10 @@ const updSellTotal = () => {
     total += (parseFloat(row.querySelector('.xQty').value) || 0) *
              (parseFloat(row.querySelector('.xPrice').value) || 0);
   });
-  // Kisan Card holder: preview the 10% discount the server will apply
-  const card = !editSaleId && total > 0 && cardFor($('custPhone').value);
+  // Kisan Card holder: preview the discount the server will apply
+  const card = !editSaleId && total > 0 && cardPct > 0 && cardFor($('custPhone').value);
   $('sellTotal').innerHTML = card
-    ? `<s style="opacity:.55">${rs(total)}</s> ${rs(total * 0.9)} <span title="Kisan Card 10% off">💳</span>`
+    ? `<s style="opacity:.55">${rs(total)}</s> ${rs(total * (100 - cardPct) / 100)} <span title="Kisan Card ${cardPct}% off">💳</span>`
     : rs(total);
 };
 $('sellQty').addEventListener('input', () => { updSellTotal(); $('looseHint').textContent = ''; });
@@ -1676,7 +1682,7 @@ function printReceipt(id) {
     <table>
       ${itemRows}
       ${items.some(x => x.kisan_card) ? `<tr><td colspan="2" style="color:#8a6d00;font-size:13px;padding-top:8px">
-        💳 Kisan Card — 10% discount applied (you saved ${rs(total / 9)})</td></tr>` : ''}
+        💳 Kisan Card discount applied</td></tr>` : ''}
       <tr class="tot"><td>Total${items.length > 1 ? ` (${items.length} items)` : ''}</td><td class="r">${rs(total)}</td></tr>
       <tr><td>Paid${refunded > 0 ? ` (after ${rs(refunded)} refund)` : ''}</td><td class="r">${rs(paidNet)}</td></tr>
       ${remaining > 0.001 ? `<tr><td class="due">Balance Due</td><td class="r due">${rs(remaining)}</td></tr>` : ''}
@@ -1734,6 +1740,25 @@ function waThanks(id) {
     : `https://wa.me/?text=${encodeURIComponent(text)}`;
   window.open(url, '_blank');
 }
+
+// admin edits the Kisan Card discount percentage (future sales only)
+$('cardPctBtn').addEventListener('click', async () => {
+  await loadCards();
+  const v = await uiPrompt('💳 Kisan Card Discount %',
+    `Current discount: ${cardPct}%. New percentage (0–90) — applies to FUTURE sales only, past sales keep their prices`,
+    String(cardPct));
+  if (v === null) return;
+  const n = parseFloat(v);
+  if (isNaN(n) || n < 0 || n > 90) { toast('Enter a number between 0 and 90', true); return; }
+  try {
+    const r = await api('/api/settings/card_pct', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: n })
+    });
+    cardPct = r.value;
+    toast(`Kisan Card discount is now ${r.value}% ✔`);
+  } catch (e) { toast(e.message, true); }
+});
 
 // admin edits the deals line shown in every thank-you message
 $('waDealsBtn').addEventListener('click', async () => {
@@ -2020,7 +2045,7 @@ function toggleKhata(key) {
 async function issueCard(name, phone) {
   if (!(await uiConfirm('💳 Issue Kisan Card?',
     `Give <b>${esc(name)}</b> (${esc(phone)}) a Kisan Card?<br><br>` +
-    `They will get <b>10% off automatically</b> on every future purchase, matched by this phone number.`,
+    `They will get <b>${cardPct}% off automatically</b> on every future purchase, matched by this phone number.`,
     '💳 Issue Card', false))) return;
   try {
     await post('/api/cards', { name, phone });
@@ -2603,7 +2628,7 @@ $('pwNew').addEventListener('keydown', ev => { if (ev.key === 'Enter') $('pwSave
       const b = document.querySelector(`.nav-btn[data-page="${p}"]`);
       if (b) b.style.display = 'none';
     });
-    ['backupBtn', 'importBtn', 'passwordBtn', 'returnsCard', 'waDealsBtn'].forEach(id => { $(id).style.display = 'none'; });
+    ['backupBtn', 'importBtn', 'passwordBtn', 'returnsCard', 'waDealsBtn', 'cardPctBtn'].forEach(id => { $(id).style.display = 'none'; });
     // salesman records for today only — dates are fixed
     $('sellDate').value = todayISO(); $('sellDate').disabled = true;
     $('buyDate').value = todayISO(); $('buyDate').disabled = true;
