@@ -822,7 +822,7 @@ function renderSales() {
       <td>${payLabel(r.payment)}</td>
       <td>${esc(r.customer_name)}</td>
       <td>${esc(r.phone)}</td>
-      <td>${r.effQty > 0.001 && withinReturnWindow(r.sale_date) ? `<button class="ret-btn" onclick="openReplace(${r.id})" title="Replace product (within 3 days)">🔁</button>` : ''}${isAdmin() && r.effQty > 0.001 ? `<button class="ret-btn" onclick="openRefund(${r.id})" title="Exception refund (admin only)">↩</button>` : ''}<button class="print-btn" onclick="printReceipt(${r.id})" title="Print receipt">🖨️</button>${isAdmin() ? `<button class="edit-btn" onclick="editSale(${r.id})" title="Edit">✏️</button><button class="del-btn" onclick="delSale(${r.id})">🗑️</button>` : ''}</td>
+      <td>${r.effQty > 0.001 && withinReturnWindow(r.sale_date) ? `<button class="ret-btn" onclick="openReplace(${r.id})" title="Replace product (within 3 days)">🔁</button>` : ''}${isAdmin() && r.effQty > 0.001 ? `<button class="ret-btn" onclick="openRefund(${r.id})" title="Exception refund (admin only)">↩</button>` : ''}<button class="print-btn" onclick="printReceipt(${r.id})" title="Print receipt">🖨️</button><button class="print-btn" onclick="waReceipt(${r.id})" title="Send receipt on WhatsApp">💬</button>${isAdmin() ? `<button class="edit-btn" onclick="editSale(${r.id})" title="Edit">✏️</button><button class="del-btn" onclick="delSale(${r.id})">🗑️</button>` : ''}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="11" class="empty-row">${saleSearchTerm
       ? 'No sales matching "' + esc(saleSearchTerm) + '"'
@@ -1363,6 +1363,14 @@ async function askPrintReceipt(id) {
   const ok = await uiConfirm('🖨️ Print Receipt?',
     'Sale saved ✔ — print the receipt for the customer now?', '🖨️ Print Receipt', false);
   if (ok) printReceipt(id);
+  // if the customer has a phone number, also offer a WhatsApp copy
+  const r = saleCache.find(x => x.id === id);
+  if (r && String(r.phone || '').trim()) {
+    const wa = await uiConfirm('💬 WhatsApp Receipt?',
+      `Send the receipt to <b>${esc(r.customer_name) || 'the customer'}</b> on WhatsApp (${esc(r.phone)})?`,
+      '💬 Send on WhatsApp', false);
+    if (wa) waReceipt(id);
+  }
 }
 
 // ---------- returns ----------
@@ -1634,6 +1642,63 @@ function printReceipt(id) {
   </div><script>window.onload = () => window.print();<\/script></body></html>`);
   w.document.close();
   w.focus();
+}
+
+// ---------- WhatsApp receipt: opens WhatsApp with the receipt text pre-filled ----------
+// Pakistani numbers: 0300... becomes 92300... for the wa.me link
+function waNumber(phone) {
+  let d = String(phone || '').replace(/\D/g, '');
+  if (d.startsWith('0')) d = '92' + d.slice(1);
+  else if (d.length === 10 && d.startsWith('3')) d = '92' + d;
+  return d;
+}
+
+function buildReceiptText(id) {
+  const r = saleCache.find(x => x.id === id);
+  if (!r) return null;
+  const group = r.receipt_group || r.id;
+  const items = saleCache.filter(x => (x.receipt_group || x.id) === group).sort((a, b) => a.id - b.id);
+  const total = items.reduce((s, x) => s + (parseFloat(x.effTotal) || 0), 0);
+  const paidNet = items.reduce((s, x) => s + (parseFloat(x.paidNet) || 0), 0);
+  const remaining = items.reduce((s, x) => s + (parseFloat(x.remaining) || 0), 0);
+
+  const lines = items.map((x, i) => {
+    const ps = parseFloat(x.pack_size) || 0;
+    const loose = ps > 0 && !Number.isInteger(parseFloat(x.effQty));
+    const qtyStr = loose
+      ? `${qty(parseFloat(x.effQty) * ps)} ${x.pack_unit} (loose)`
+      : `${qty(x.effQty)} ${x.unit} x ${rs(x.sale_price)}`;
+    return `${i + 1}. ${x.name} — ${qtyStr} = ${rs(x.effTotal)}`;
+  });
+
+  const text =
+    `🌾 *Kisan Depot* 🌾\n` +
+    `Fertilizers • Seeds • Pesticides\n` +
+    `وڈانہ اڈا، مین فیروزپور روڈ، قصور\n` +
+    `📞 0305-9191759\n\n` +
+    `🧾 Receipt: *KD-${group}*\n` +
+    `📅 ${fmtDate(r.sale_date)}\n` +
+    (r.customer_name ? `👤 ${r.customer_name}\n` : '') +
+    `\n${lines.join('\n')}\n\n` +
+    `*Total: ${rs(total)}*\n` +
+    `Paid: ${rs(paidNet)}\n` +
+    (remaining > 0.001 ? `⚠️ Balance due: *${rs(remaining)}*\n` : '') +
+    `Payment: ${r.payment}\n\n` +
+    `شکریہ! Thank you for your purchase.\n` +
+    `تبدیلی صرف 3 دن کے اندر قابلِ قبول ہے`;
+
+  return { text, phone: r.phone };
+}
+
+function waReceipt(id) {
+  const rec = buildReceiptText(id);
+  if (!rec) return;
+  const num = waNumber(rec.phone);
+  // with a saved number WhatsApp opens that chat; without, it asks who to send to
+  const url = num
+    ? `https://wa.me/${num}?text=${encodeURIComponent(rec.text)}`
+    : `https://wa.me/?text=${encodeURIComponent(rec.text)}`;
+  window.open(url, '_blank');
 }
 
 async function delSale(id) {
