@@ -60,12 +60,13 @@ function toast(msg, isErr) {
 
 // ---------- themed dialog boxes (replace browser alert/confirm/prompt) ----------
 let confirmResolve = null;
-function uiConfirm(title, messageHtml, okLabel = 'Yes, Delete') {
+function uiConfirm(title, messageHtml, okLabel = 'Yes, Delete', danger = true) {
   return new Promise(resolve => {
     confirmResolve = resolve;
     $('confirmTitle').textContent = title;
     $('confirmMsg').innerHTML = messageHtml;
     $('confirmOk').textContent = okLabel;
+    $('confirmOk').classList.toggle('danger', danger); // green-lit actions (e.g. print) aren't red
     $('confirmModal').classList.add('show');
   });
 }
@@ -1227,13 +1228,16 @@ $('saleForm').addEventListener('submit', async ev => {
       });
       toast('Sale details updated ✔');
     } else if (items.length === 1) {
-      await post('/api/sales', {
+      const saved = await post('/api/sales', {
         product_id: items[0].product_id, sale_date: $('sellDate').value,
         qty: items[0].qty, sale_price: items[0].sale_price,
         payment: payMethod, paid_now: $('sellPaid').value,
         customer_name: $('custName').value, phone: $('custPhone').value, address: $('custAddress').value
       });
       toast('Sale saved ✔');
+      resetSaleForm();
+      refreshCurrentPage();
+      return askPrintReceipt(saved.id);
     } else {
       const r = await post('/api/sales/multi', {
         sale_date: $('sellDate').value, payment: payMethod, paid_now: $('sellPaid').value,
@@ -1241,11 +1245,22 @@ $('saleForm').addEventListener('submit', async ev => {
         items
       });
       toast(`Sale saved ✔ — ${r.items} items on receipt KD-${r.id}`);
+      resetSaleForm();
+      refreshCurrentPage();
+      return askPrintReceipt(r.id);
     }
     resetSaleForm();
     refreshCurrentPage();
   } catch (e) { toast(e.message, true); }
 });
+
+// offer the receipt right after saving — no scrolling down to find the row
+async function askPrintReceipt(id) {
+  await loadSales(); // make sure the fresh sale is in the cache before printing
+  const ok = await uiConfirm('🖨️ Print Receipt?',
+    'Sale saved ✔ — print the receipt for the customer now?', '🖨️ Print Receipt', false);
+  if (ok) printReceipt(id);
+}
 
 // ---------- returns ----------
 let returnTarget = null;
