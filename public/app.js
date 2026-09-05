@@ -168,8 +168,8 @@ function refresh(page) {
   if (page === 'dashboard') loadDashboard();
   if (page === 'products') loadProducts();
   if (page === 'stockin') { loadProductOptions(); loadPurchases(); }
-  if (page === 'sales') { loadProductOptions(); loadSales(); loadReplacements(); loadMyDay(); loadWaDeals(); if (isAdmin()) loadReturns(); }
-  if (page === 'khata') loadKhata();
+  if (page === 'sales') { loadProductOptions(); loadSales(); loadReplacements(); loadMyDay(); loadWaDeals(); loadCards(); if (isAdmin()) loadReturns(); }
+  if (page === 'khata') { loadCards().then(loadKhata); }
   if (page === 'register') { loadProductOptions(); loadRegister(); }
   if (page === 'partners') { loadPartners(); loadInvestments(); fillInvestProducts(); }
   if (page === 'expenses') loadExpenses();
@@ -745,6 +745,17 @@ $('saleSearchClear').addEventListener('click', () => {
   $('saleSearch').focus();
 });
 
+// Kisan Card holders — 10% discount, matched by phone (server applies it;
+// this cache is only for showing the discount before saving)
+let cardsCache = [];
+async function loadCards() {
+  try { cardsCache = await api('/api/cards'); } catch { /* keep old */ }
+}
+const cardFor = phone => {
+  const d = String(phone || '').replace(/\D/g, '');
+  return d.length >= 7 ? cardsCache.find(c => String(c.phone || '').replace(/\D/g, '') === d) : null;
+};
+
 // directory of known customers, rebuilt from the sales list — used to
 // auto-fill repeat customers so "Akram" doesn't become three different people
 let custDir = [];
@@ -820,7 +831,7 @@ function renderSales() {
            <button class="pay-btn" onclick="openPay('sales', ${r.id}, '${jsq(r.customer_name) || jsq(r.name)}', ${r.remaining})">💰 Receive</button>`
         : '<span class="paid-ok">✓ Paid</span>'}</td>
       <td>${payLabel(r.payment)}</td>
-      <td>${esc(r.customer_name)}</td>
+      <td>${esc(r.customer_name)}${r.kisan_card ? ' <span title="Kisan Card — 10% discount was applied">💳</span>' : ''}</td>
       <td>${esc(r.phone)}</td>
       <td>${r.effQty > 0.001 && withinReturnWindow(r.sale_date) ? `<button class="ret-btn" onclick="openReplace(${r.id})" title="Replace product (within 3 days)">🔁</button>` : ''}${isAdmin() && r.effQty > 0.001 ? `<button class="ret-btn" onclick="openRefund(${r.id})" title="Exception refund (admin only)">↩</button>` : ''}<button class="print-btn" onclick="printReceipt(${r.id})" title="Print receipt">🖨️</button><button class="print-btn" onclick="waThanks(${r.id})" title="Send thank-you message on WhatsApp">💬</button>${isAdmin() ? `<button class="edit-btn" onclick="editSale(${r.id})" title="Edit">✏️</button><button class="del-btn" onclick="delSale(${r.id})">🗑️</button>` : ''}</td>
     </tr>`;
@@ -844,32 +855,39 @@ $('custPhone').addEventListener('input', () => {
 // ---------- repeat-customer autofill ----------
 const phoneDigits = v => String(v || '').replace(/\D/g, '');
 
+const cardNote = phone => cardFor(phone)
+  ? `<br><span style="color:var(--gold);font-weight:600">💳 Kisan Card — 10% discount applied automatically</span>` : '';
+
 function fillCustomer(c) {
   $('custName').value = c.name;
   $('custPhone').value = c.phone;
   if (c.address) $('custAddress').value = c.address;
-  $('custPhoneHint').innerHTML = '<span class="paid-ok">✓ Repeat customer — details filled</span>';
+  $('custPhoneHint').innerHTML = '<span class="paid-ok">✓ Repeat customer — details filled</span>' + cardNote(c.phone);
+  updSellTotal();
 }
 
-// typing a known phone number pulls the customer's name and address
+// typing a known phone number pulls the customer's name and address,
+// and shows the Kisan Card discount when the number holds one
 $('custPhone').addEventListener('input', () => {
   const d = phoneDigits($('custPhone').value);
   const hint = $('custPhoneHint');
+  updSellTotal();
   if (d.length < 7) { hint.textContent = ''; return; }
   const match = custDir.find(c => phoneDigits(c.phone) === d);
-  if (!match) { hint.textContent = ''; return; }
+  if (!match) { hint.innerHTML = cardNote($('custPhone').value).replace('<br>', ''); return; }
   const typed = $('custName').value.trim();
   if (!typed) {
     $('custName').value = match.name;
     if (match.address && !$('custAddress').value.trim()) $('custAddress').value = match.address;
-    hint.innerHTML = `<span class="paid-ok">✓ Repeat customer: ${esc(match.name)}</span>`;
+    hint.innerHTML = `<span class="paid-ok">✓ Repeat customer: ${esc(match.name)}</span>` + cardNote($('custPhone').value);
   } else if (typed.toLowerCase() !== match.name.toLowerCase()) {
     // a different spelling — offer the saved one so the khata stays one person
     hint.innerHTML = `📒 This number is saved as <b style="cursor:pointer;text-decoration:underline" ` +
-      `onclick="fillCustomer(custDir.find(c => phoneDigits(c.phone) === '${d}'))">${esc(match.name)}</b> — tap to use`;
+      `onclick="fillCustomer(custDir.find(c => phoneDigits(c.phone) === '${d}'))">${esc(match.name)}</b> — tap to use` +
+      cardNote($('custPhone').value);
   } else {
     if (match.address && !$('custAddress').value.trim()) $('custAddress').value = match.address;
-    hint.innerHTML = `<span class="paid-ok">✓ Repeat customer</span>`;
+    hint.innerHTML = `<span class="paid-ok">✓ Repeat customer</span>` + cardNote($('custPhone').value);
   }
 });
 
@@ -931,7 +949,11 @@ const updSellTotal = () => {
     total += (parseFloat(row.querySelector('.xQty').value) || 0) *
              (parseFloat(row.querySelector('.xPrice').value) || 0);
   });
-  $('sellTotal').textContent = rs(total);
+  // Kisan Card holder: preview the 10% discount the server will apply
+  const card = !editSaleId && total > 0 && cardFor($('custPhone').value);
+  $('sellTotal').innerHTML = card
+    ? `<s style="opacity:.55">${rs(total)}</s> ${rs(total * 0.9)} <span title="Kisan Card 10% off">💳</span>`
+    : rs(total);
 };
 $('sellQty').addEventListener('input', () => { updSellTotal(); $('looseHint').textContent = ''; });
 $('sellPrice').addEventListener('input', () => { updSellTotal(); $('looseHint').textContent = ''; });
@@ -1623,6 +1645,8 @@ function printReceipt(id) {
     <hr>
     <table>
       ${itemRows}
+      ${items.some(x => x.kisan_card) ? `<tr><td colspan="2" style="color:#8a6d00;font-size:13px;padding-top:8px">
+        💳 Kisan Card — 10% discount applied (you saved ${rs(total / 9)})</td></tr>` : ''}
       <tr class="tot"><td>Total${items.length > 1 ? ` (${items.length} items)` : ''}</td><td class="r">${rs(total)}</td></tr>
       <tr><td>Paid${refunded > 0 ? ` (after ${rs(refunded)} refund)` : ''}</td><td class="r">${rs(paidNet)}</td></tr>
       ${remaining > 0.001 ? `<tr><td class="due">Balance Due</td><td class="r due">${rs(remaining)}</td></tr>` : ''}
@@ -1928,8 +1952,9 @@ function renderKhata() {
   }
   $('khataRows').innerHTML = rows.length ? rows.map(c => {
     const open = khataExpanded === c.key;
+    const card = cardFor(c.phone);
     return `<tr class="khata-row" onclick="toggleKhata('${jsq(c.key)}')">
-      <td class="b">${c.unpaid.length ? (open ? '▾ ' : '▸ ') : ''}${esc(c.name)}</td>
+      <td class="b">${c.unpaid.length ? (open ? '▾ ' : '▸ ') : ''}${esc(c.name)}${card ? ' <span title="Kisan Card holder — 10% discount">💳</span>' : ''}</td>
       <td>${esc(c.phone)}</td>
       <td>${esc(c.address)}</td>
       <td class="r">${c.salesCount}</td>
@@ -1937,7 +1962,11 @@ function renderKhata() {
       <td class="r">${rs(c.totalPaid)}</td>
       <td class="r">${c.due > 0.001 ? `<span class="due b">${rs(c.due)}</span>` : '<span class="paid-ok">✓ Clear</span>'}</td>
       <td>${fmtDate(c.lastSale)}</td>
-      <td>${c.due > 0.001 ? `<button class="pay-btn" onclick="event.stopPropagation(); openKhataPay('${jsq(c.key)}')">💰 Receive</button>` : ''}</td>
+      <td>${c.due > 0.001 ? `<button class="pay-btn" onclick="event.stopPropagation(); openKhataPay('${jsq(c.key)}')">💰 Receive</button>` : ''}${isAdmin() && c.phone
+        ? (card
+          ? ` <button class="edit-name-btn" onclick="event.stopPropagation(); revokeCard(${card.id}, '${jsq(card.name)}')" title="Revoke Kisan Card">💳✖</button>`
+          : ` <button class="edit-name-btn" onclick="event.stopPropagation(); issueCard('${jsq(c.name)}', '${jsq(c.phone)}')" title="Issue Kisan Card (10% discount)">💳+</button>`)
+        : ''}</td>
     </tr>` + (open && c.unpaid.length ? `<tr class="khata-detail"><td colspan="9">
       <table class="khata-bills">
         <tr><th>Date</th><th>Receipt</th><th>Product</th><th class="r">Qty</th><th class="r">Bill</th><th class="r">Paid</th><th class="r">Still Due</th></tr>
@@ -1956,6 +1985,30 @@ function renderKhata() {
 function toggleKhata(key) {
   khataExpanded = khataExpanded === key ? null : key;
   renderKhata();
+}
+
+async function issueCard(name, phone) {
+  if (!(await uiConfirm('💳 Issue Kisan Card?',
+    `Give <b>${esc(name)}</b> (${esc(phone)}) a Kisan Card?<br><br>` +
+    `They will get <b>10% off automatically</b> on every future purchase, matched by this phone number.`,
+    '💳 Issue Card', false))) return;
+  try {
+    await post('/api/cards', { name, phone });
+    toast(`Kisan Card issued to ${name} ✔`);
+    await loadCards();
+    refreshCurrentPage();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function revokeCard(id, name) {
+  if (!(await uiConfirm('Revoke Kisan Card?',
+    `Take back <b>${esc(name)}</b>'s Kisan Card?<br>Future purchases will be at full price — past discounts stay as they were.`))) return;
+  try {
+    await api('/api/cards/' + id, { method: 'DELETE' });
+    toast('Kisan Card revoked');
+    await loadCards();
+    refreshCurrentPage();
+  } catch (e) { toast(e.message, true); }
 }
 
 $('khataChips').addEventListener('click', ev => {

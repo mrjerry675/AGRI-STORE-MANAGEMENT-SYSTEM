@@ -17,6 +17,7 @@ async function main() {
     await c.query('BEGIN');
     await c.query(`TRUNCATE products, purchases, sales, sale_payments, purchase_payments,
                    partners, investments, expenses, sale_returns, replacements RESTART IDENTITY CASCADE`);
+    await c.query('TRUNCATE kisan_cards RESTART IDENTITY').catch(() => {});
 
     // legacy backups saved dates as UTC instants written by a Pakistan (UTC+5) machine;
     // normalise every date to plain YYYY-MM-DD so nothing shifts on any timezone
@@ -48,8 +49,9 @@ async function main() {
       ['id', 'name', 'active', 'left_date', 'final_invested', 'final_profit', 'final_expense_share', 'final_net', 'created_at'],
       { active: true, final_invested: 0, final_profit: 0, final_expense_share: 0, final_net: 0 });
     await ins('purchases', b.purchases, ['id', 'product_id', 'purchase_date', 'qty', 'unit_price', 'transport', 'created_at'], { transport: 0 });
-    await ins('sales', b.sales, ['id', 'product_id', 'sale_date', 'qty', 'sale_price', 'payment', 'customer_name', 'phone', 'address', 'receipt_group', 'replaced_note', 'created_at'],
-      { payment: 'Cash', customer_name: '', phone: '', address: '', replaced_note: '' });
+    await ins('sales', b.sales, ['id', 'product_id', 'sale_date', 'qty', 'sale_price', 'payment', 'customer_name', 'phone', 'address', 'receipt_group', 'replaced_note', 'kisan_card', 'created_at'],
+      { payment: 'Cash', customer_name: '', phone: '', address: '', replaced_note: '', kisan_card: false });
+    await ins('kisan_cards', b.kisan_cards, ['id', 'name', 'phone', 'created_at']);
     await ins('replacements', b.replacements, ['id', 'sale_id', 'new_sale_id', 'rep_date', 'qty', 'from_product', 'from_price', 'to_product', 'to_price', 'reason', 'created_at'],
       { from_product: '', from_price: 0, to_product: '', to_price: 0, reason: '' });
     await ins('sale_payments', b.sale_payments, ['id', 'sale_id', 'pay_date', 'amount', 'method', 'created_at'], { method: 'Cash' });

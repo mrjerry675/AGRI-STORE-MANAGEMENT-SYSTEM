@@ -56,6 +56,7 @@ const SALESMAN_ALLOW = [
   ['POST', /^\/sales\/\d+\/payments$/], ['POST', /^\/sales\/\d+\/replace$/],
   ['GET', /^\/khata$/], ['POST', /^\/khata\/pay$/],
   ['GET', /^\/settings\/wa_deals$/],
+  ['GET', /^\/cards$/],
   ['GET', /^\/replacements$/],
   ['GET', /^\/purchases$/], ['POST', /^\/purchases$/], ['POST', /^\/purchases\/\d+\/payments$/]
 ];
@@ -498,6 +499,57 @@ app.get('/api/sales', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ---------- Kisan Cards: cardholders get 10% off, applied by the server ----------
+// The card is matched by phone number at sale time, so the discount can never
+// be forgotten or faked from the form. The discounted price is what gets
+// stored on the sale, so every calculation stays exact with no special cases.
+const KISAN_CARD_PCT = 10;
+const digitsOf = v => String(v || '').replace(/\D/g, '');
+
+async function findKisanCard(phone) {
+  const d = digitsOf(phone);
+  if (d.length < 7) return null;
+  const { rows } = await pool.query('SELECT * FROM kisan_cards');
+  return rows.find(c => digitsOf(c.phone) === d) || null;
+}
+const cardPrice = p => Math.round(num(p) * (100 - KISAN_CARD_PCT)) / 100;
+
+app.get('/api/cards', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name, phone, to_char(created_at, 'YYYY-MM-DD') AS issued FROM kisan_cards ORDER BY name`);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/cards', async (req, res) => {
+  try {
+    const name = String(req.body.name || '').trim();
+    const phone = String(req.body.phone || '').trim();
+    if (!name) return res.status(400).json({ error: 'Cardholder name is required' });
+    if (digitsOf(phone).length < 7) {
+      return res.status(400).json({ error: 'A valid phone number is required — the card is matched by phone at sale time' });
+    }
+    const dup = await findKisanCard(phone);
+    if (dup) return res.status(400).json({ error: `This number already has a Kisan Card (${dup.name})` });
+    const { rows } = await pool.query('INSERT INTO kisan_cards (name, phone) VALUES ($1, $2) RETURNING *', [name, phone]);
+    await logAction(req, 'created', 'card',
+      `Kisan Card ISSUED to ${name} (${phone}) — ${KISAN_CARD_PCT}% discount on all purchases`);
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/cards/:id', async (req, res) => {
+  try {
+    const info = await pool.query('SELECT name, phone FROM kisan_cards WHERE id = $1', [req.params.id]);
+    await pool.query('DELETE FROM kisan_cards WHERE id = $1', [req.params.id]);
+    if (info.rows.length) {
+      await logAction(req, 'deleted', 'card', `Kisan Card REVOKED: ${info.rows[0].name} (${info.rows[0].phone})`);
+    }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/sales', async (req, res) => {
   try {
     const { product_id, sale_date, qty, sale_price, payment, customer_name, phone, address, paid_now } = req.body;
@@ -513,13 +565,17 @@ app.post('/api/sales', async (req, res) => {
       return res.status(400).json({ error: `Only ${prod.remaining} ${prod.unit} in stock for ${prod.name}` });
     }
 
+    // Kisan Card holders (matched by phone) get their discount automatically
+    const card = await findKisanCard(phone);
+    const finalPrice = card ? cardPrice(sale_price) : num(sale_price);
+
     const method = payment || 'Cash';
-    const total = num(qty) * num(sale_price);
+    const total = num(qty) * finalPrice;
     // blank "received now" means: credit sale -> nothing received, otherwise fully received
     const paid = (paid_now === undefined || paid_now === null || paid_now === '')
       ? (method === 'Credit (Udhaar)' ? 0 : total) : num(paid_now);
     if (paid < 0) return res.status(400).json({ error: 'Received amount cannot be negative' });
-    if (paid > total) return res.status(400).json({ error: `Received amount cannot be more than the total (Rs ${total})` });
+    if (paid > total + 0.001) return res.status(400).json({ error: `Received amount cannot be more than the total (Rs ${total})` });
 
     if (isSalesman(req)) {
       if (sale_date !== localStamp()) return res.status(400).json({ error: 'Salesman accounts can only record sales for today' });
@@ -533,19 +589,21 @@ app.post('/api/sales', async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `INSERT INTO sales (product_id, sale_date, qty, sale_price, payment, customer_name, phone, address)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [product_id, sale_date, qty, sale_price || 0, method, customer_name || '', phone || '', address || '']);
+      `INSERT INTO sales (product_id, sale_date, qty, sale_price, payment, customer_name, phone, address, kisan_card)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [product_id, sale_date, qty, finalPrice, method, customer_name || '', phone || '', address || '', !!card]);
     if (paid > 0) {
       await pool.query(
         'INSERT INTO sale_payments (sale_id, pay_date, amount, method) VALUES ($1, $2, $3, $4)',
         [rows[0].id, sale_date, paid, method === 'Credit (Udhaar)' ? 'Cash' : method]);
     }
     await logAction(req, 'created', 'sale',
-      `Sale KD-${rows[0].id} saved: ${num(qty)} ${prod.unit} ${prod.name} @ ${fRs(sale_price)} = ${fRs(total)}` +
+      `Sale KD-${rows[0].id} saved: ${num(qty)} ${prod.unit} ${prod.name} @ ${fRs(finalPrice)}` +
+      (card ? ` (Kisan Card ${KISAN_CARD_PCT}% off, was ${fRs(sale_price)})` : '') +
+      ` = ${fRs(total)}` +
       (customer_name ? ` to ${customer_name}` : '') +
       ` — received ${fRs(paid)} (${method})${paid < total ? `, due ${fRs(total - paid)}` : ''}`);
-    res.json(rows[0]);
+    res.json({ ...rows[0], kisanCard: !!card });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -822,12 +880,16 @@ app.post('/api/sales/multi', async (req, res) => {
       }
     }
 
+    // Kisan Card holders (matched by phone) get their discount on every line
+    const card = await findKisanCard(phone);
+    const priceOf = it => card ? cardPrice(it.sale_price) : num(it.sale_price);
+
     const method = payment || 'Cash';
-    const total = items.reduce((s, it) => s + num(it.qty) * num(it.sale_price), 0);
+    const total = items.reduce((s, it) => s + num(it.qty) * priceOf(it), 0);
     const paid = (paid_now === undefined || paid_now === null || paid_now === '')
       ? (method === 'Credit (Udhaar)' ? 0 : total) : num(paid_now);
     if (paid < 0) return res.status(400).json({ error: 'Received amount cannot be negative' });
-    if (paid > total) return res.status(400).json({ error: `Received amount cannot be more than the total (Rs ${total})` });
+    if (paid > total + 0.001) return res.status(400).json({ error: `Received amount cannot be more than the total (Rs ${total})` });
 
     if (isSalesman(req)) {
       if (sale_date !== localStamp()) return res.status(400).json({ error: 'Salesman accounts can only record sales for today' });
@@ -848,16 +910,16 @@ app.post('/api/sales/multi', async (req, res) => {
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
         const { rows } = await c.query(
-          `INSERT INTO sales (product_id, sale_date, qty, sale_price, payment, customer_name, phone, address, receipt_group)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-          [it.product_id, sale_date, it.qty, it.sale_price, method,
-           customer_name || '', phone || '', address || '', group || null]);
+          `INSERT INTO sales (product_id, sale_date, qty, sale_price, payment, customer_name, phone, address, receipt_group, kisan_card)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+          [it.product_id, sale_date, it.qty, priceOf(it), method,
+           customer_name || '', phone || '', address || '', group || null, !!card]);
         if (i === 0) {
           group = rows[0].id;
           await c.query('UPDATE sales SET receipt_group = $1 WHERE id = $1', [group]);
         }
         // fill this line's payment from what the customer handed over
-        const lineTotal = num(it.qty) * num(it.sale_price);
+        const lineTotal = num(it.qty) * priceOf(it);
         const alloc = Math.min(remainingPay, lineTotal);
         if (alloc > 0.001) {
           await c.query(
@@ -874,9 +936,10 @@ app.post('/api/sales/multi', async (req, res) => {
     const itemList = items.map(it => `${num(it.qty)} x ${nameOf[it.product_id]}`).join(', ');
     await logAction(req, 'created', 'sale',
       `Sale KD-${group} saved (${items.length} items): ${itemList} = ${fRs(total)}` +
+      (card ? ` (Kisan Card ${KISAN_CARD_PCT}% off)` : '') +
       (customer_name ? ` to ${customer_name}` : '') +
       ` — received ${fRs(paid)} (${method})${paid < total ? `, due ${fRs(total - paid)}` : ''}`);
-    res.json({ ok: true, id: group, items: items.length });
+    res.json({ ok: true, id: group, items: items.length, kisanCard: !!card });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1734,7 +1797,7 @@ async function buildBackup() {
   const [products, purchases, sales, salePayments, purchasePayments, partners, investments, expenses, saleReturns, logs, replacements] = await Promise.all([
     pool.query('SELECT * FROM products ORDER BY id'),
     pool.query(`SELECT id, product_id, to_char(purchase_date, 'YYYY-MM-DD') AS purchase_date, qty, unit_price, transport, created_at FROM purchases ORDER BY id`),
-    pool.query(`SELECT id, product_id, to_char(sale_date, 'YYYY-MM-DD') AS sale_date, qty, sale_price, payment, customer_name, phone, address, receipt_group, replaced_note, created_at FROM sales ORDER BY id`),
+    pool.query(`SELECT id, product_id, to_char(sale_date, 'YYYY-MM-DD') AS sale_date, qty, sale_price, payment, customer_name, phone, address, receipt_group, replaced_note, kisan_card, created_at FROM sales ORDER BY id`),
     pool.query(`SELECT id, sale_id, to_char(pay_date, 'YYYY-MM-DD') AS pay_date, amount, method, created_at FROM sale_payments ORDER BY id`),
     pool.query(`SELECT id, purchase_id, to_char(pay_date, 'YYYY-MM-DD') AS pay_date, amount, method, created_at FROM purchase_payments ORDER BY id`),
     pool.query(`SELECT id, name, active, to_char(left_date, 'YYYY-MM-DD') AS left_date, final_invested, final_profit, final_expense_share, final_net, created_at FROM partners ORDER BY id`),
@@ -1744,12 +1807,15 @@ async function buildBackup() {
     pool.query('SELECT * FROM logs ORDER BY id'),
     pool.query(`SELECT id, sale_id, new_sale_id, to_char(rep_date, 'YYYY-MM-DD') AS rep_date, qty, from_product, from_price, to_product, to_price, reason, created_at FROM replacements ORDER BY id`)
   ]);
+  const kisanCards = await pool.query('SELECT * FROM kisan_cards ORDER BY id').catch(() => ({ rows: [] }));
+  const settings = await pool.query('SELECT * FROM settings ORDER BY key').catch(() => ({ rows: [] }));
   return {
     exportedAt: new Date().toISOString(),
     products: products.rows, purchases: purchases.rows, sales: sales.rows,
     sale_payments: salePayments.rows, purchase_payments: purchasePayments.rows,
     partners: partners.rows, investments: investments.rows, expenses: expenses.rows,
-    sale_returns: saleReturns.rows, logs: logs.rows, replacements: replacements.rows
+    sale_returns: saleReturns.rows, logs: logs.rows, replacements: replacements.rows,
+    kisan_cards: kisanCards.rows, settings: settings.rows
   };
 }
 
@@ -1799,6 +1865,7 @@ async function restoreData(b) {
     await c.query('BEGIN');
     await c.query(`TRUNCATE products, purchases, sales, sale_payments, purchase_payments,
                    partners, investments, expenses, sale_returns, replacements RESTART IDENTITY CASCADE`);
+    await c.query('TRUNCATE kisan_cards RESTART IDENTITY').catch(() => {});
     // legacy backups saved dates as UTC instants written by a Pakistan (UTC+5) machine;
     // normalise every date to plain YYYY-MM-DD so nothing shifts on any timezone
     const DATE_COLS = new Set(['purchase_date', 'sale_date', 'pay_date', 'return_date', 'inv_date', 'exp_date', 'rep_date', 'left_date']);
@@ -1828,8 +1895,9 @@ async function restoreData(b) {
       ['id', 'name', 'active', 'left_date', 'final_invested', 'final_profit', 'final_expense_share', 'final_net', 'created_at'],
       { active: true, final_invested: 0, final_profit: 0, final_expense_share: 0, final_net: 0 });
     await ins('purchases', b.purchases, ['id', 'product_id', 'purchase_date', 'qty', 'unit_price', 'transport', 'created_at'], { transport: 0 });
-    await ins('sales', b.sales, ['id', 'product_id', 'sale_date', 'qty', 'sale_price', 'payment', 'customer_name', 'phone', 'address', 'receipt_group', 'replaced_note', 'created_at'],
-      { payment: 'Cash', customer_name: '', phone: '', address: '', replaced_note: '' });
+    await ins('sales', b.sales, ['id', 'product_id', 'sale_date', 'qty', 'sale_price', 'payment', 'customer_name', 'phone', 'address', 'receipt_group', 'replaced_note', 'kisan_card', 'created_at'],
+      { payment: 'Cash', customer_name: '', phone: '', address: '', replaced_note: '', kisan_card: false });
+    await ins('kisan_cards', b.kisan_cards, ['id', 'name', 'phone', 'created_at']);
     await ins('replacements', b.replacements, ['id', 'sale_id', 'new_sale_id', 'rep_date', 'qty', 'from_product', 'from_price', 'to_product', 'to_price', 'reason', 'created_at'],
       { from_product: '', from_price: 0, to_product: '', to_price: 0, reason: '' });
     await ins('sale_payments', b.sale_payments, ['id', 'sale_id', 'pay_date', 'amount', 'method', 'created_at'], { method: 'Cash' });

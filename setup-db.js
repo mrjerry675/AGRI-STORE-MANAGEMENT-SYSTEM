@@ -106,6 +106,13 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS kisan_cards (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS partners (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
@@ -176,6 +183,7 @@ async function main() {
     ALTER TABLE partners  ADD COLUMN IF NOT EXISTS final_net NUMERIC NOT NULL DEFAULT 0;
     ALTER TABLE users     ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'admin';
     ALTER TABLE sales     ADD COLUMN IF NOT EXISTS replaced_note TEXT NOT NULL DEFAULT '';
+    ALTER TABLE sales     ADD COLUMN IF NOT EXISTS kisan_card BOOLEAN NOT NULL DEFAULT false;
   `);
   console.log('Database schema is up to date.');
 
