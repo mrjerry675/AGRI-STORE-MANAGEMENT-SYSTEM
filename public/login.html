@@ -25,34 +25,58 @@
       linear-gradient(180deg, #100a20, #1b1233 55%, #150e28);
   }
   .glow { position: absolute; border-radius: 50%; filter: blur(80px); animation: breathe 10s ease-in-out infinite; }
-  .glow.g1 { width: 540px; height: 540px; left: -160px; top: -180px; background: rgba(124, 58, 237, .28); }
-  .glow.g2 { width: 440px; height: 440px; right: -130px; top: 28%; background: rgba(167, 139, 250, .18); animation-delay: -3.5s; }
-  .glow.g3 { width: 620px; height: 380px; left: calc(50% - 310px); bottom: -160px; background: rgba(251, 191, 36, .14); animation-delay: -7s; }
+  .glow.g1 { width: 540px; height: 540px; left: -160px; top: -180px; background: rgba(124, 58, 237, .26); }
+  .glow.g2 { width: 440px; height: 440px; right: -130px; top: 28%; background: rgba(167, 139, 250, .16); animation-delay: -3.5s; }
+  .glow.g3 { width: 900px; height: 420px; left: calc(50% - 450px); bottom: -190px; background: rgba(251, 191, 36, .17); animation-delay: -7s; }
   @keyframes breathe { 0%, 100% { transform: scale(1); opacity: .85; } 50% { transform: scale(1.14); opacity: 1; } }
 
+  /* a small glowing moon, high right */
+  .moon {
+    position: absolute; top: 9vh; right: 12vw; width: 46px; height: 46px; border-radius: 50%;
+    background: radial-gradient(circle at 38% 35%, #fdf6e3, #f5e6b8 55%, #e8cf8f);
+    box-shadow: 0 0 22px 6px rgba(253, 240, 200, .45), 0 0 90px 34px rgba(251, 191, 36, .16);
+    animation: moonglow 8s ease-in-out infinite;
+  }
+  @keyframes moonglow {
+    0%, 100% { box-shadow: 0 0 22px 6px rgba(253, 240, 200, .45), 0 0 90px 34px rgba(251, 191, 36, .16); }
+    50% { box-shadow: 0 0 28px 9px rgba(253, 240, 200, .58), 0 0 110px 44px rgba(251, 191, 36, .22); }
+  }
+
+  /* glowing stars: each dot carries a soft halo (blurred shadow layer) */
   .stars, .stars2 {
-    position: absolute; top: 0; left: 0; width: 2px; height: 2px; border-radius: 50%;
+    position: absolute; top: 0; left: 0; width: 2.5px; height: 2.5px; border-radius: 50%;
     background: transparent; animation: twinkle 4.5s ease-in-out infinite;
   }
   .stars {
     box-shadow:
-      6vw 8vh 0 0 rgba(241,237,252,.9), 14vw 22vh 0 0 rgba(196,181,253,.7), 22vw 5vh 0 0 rgba(241,237,252,.8),
-      30vw 16vh 0 0 rgba(196,181,253,.6), 37vw 7vh 0 0 rgba(241,237,252,.9), 45vw 19vh 0 0 rgba(241,237,252,.55),
-      53vw 4vh 0 0 rgba(196,181,253,.8), 61vw 13vh 0 0 rgba(241,237,252,.7), 69vw 24vh 0 0 rgba(196,181,253,.6),
-      76vw 9vh 0 0 rgba(241,237,252,.85), 84vw 18vh 0 0 rgba(241,237,252,.6), 91vw 6vh 0 0 rgba(196,181,253,.8),
-      96vw 26vh 0 0 rgba(241,237,252,.5), 10vw 34vh 0 0 rgba(196,181,253,.5), 33vw 30vh 0 0 rgba(241,237,252,.45),
-      58vw 33vh 0 0 rgba(196,181,253,.5), 81vw 36vh 0 0 rgba(241,237,252,.45), 25vw 42vh 0 0 rgba(196,181,253,.4);
+      6vw 8vh 0 0 #f1edfc, 6vw 8vh 6px 2px rgba(241,237,252,.5),
+      14vw 22vh 0 0 rgba(196,181,253,.9), 14vw 22vh 5px 1px rgba(196,181,253,.35),
+      22vw 5vh 0 0 #f1edfc, 22vw 5vh 7px 2px rgba(251,191,36,.30),
+      30vw 16vh 0 0 rgba(196,181,253,.8),
+      37vw 7vh 0 0 #f1edfc, 37vw 7vh 6px 2px rgba(241,237,252,.45),
+      45vw 19vh 0 0 rgba(241,237,252,.6),
+      53vw 4vh 0 0 rgba(196,181,253,.9), 53vw 4vh 6px 2px rgba(196,181,253,.35),
+      61vw 13vh 0 0 rgba(241,237,252,.75),
+      69vw 24vh 0 0 rgba(196,181,253,.6),
+      76vw 9vh 0 0 #f1edfc, 76vw 9vh 7px 2px rgba(251,191,36,.28),
+      84vw 18vh 0 0 rgba(241,237,252,.65),
+      91vw 6vh 0 0 rgba(196,181,253,.85), 91vw 6vh 6px 2px rgba(196,181,253,.35),
+      96vw 26vh 0 0 rgba(241,237,252,.55),
+      10vw 34vh 0 0 rgba(196,181,253,.55), 33vw 30vh 0 0 rgba(241,237,252,.5),
+      58vw 33vh 0 0 rgba(196,181,253,.55), 81vw 36vh 0 0 rgba(241,237,252,.5),
+      25vw 42vh 0 0 rgba(196,181,253,.45), 49vw 44vh 0 0 rgba(241,237,252,.4);
   }
   .stars2 {
-    width: 1.5px; height: 1.5px; animation-delay: -2.2s; animation-duration: 6s;
+    width: 1.5px; height: 1.5px; animation-delay: -2.2s; animation-duration: 6.5s;
     box-shadow:
-      3vw 15vh 0 0 rgba(241,237,252,.5), 11vw 3vh 0 0 rgba(196,181,253,.45), 18vw 28vh 0 0 rgba(241,237,252,.4),
-      27vw 11vh 0 0 rgba(241,237,252,.5), 35vw 24vh 0 0 rgba(196,181,253,.4), 42vw 3vh 0 0 rgba(241,237,252,.45),
-      50vw 27vh 0 0 rgba(196,181,253,.35), 57vw 9vh 0 0 rgba(241,237,252,.5), 65vw 5vh 0 0 rgba(196,181,253,.45),
-      73vw 17vh 0 0 rgba(241,237,252,.4), 80vw 28vh 0 0 rgba(196,181,253,.35), 88vw 12vh 0 0 rgba(241,237,252,.5),
-      94vw 20vh 0 0 rgba(196,181,253,.4), 47vw 38vh 0 0 rgba(241,237,252,.35), 68vw 41vh 0 0 rgba(196,181,253,.3);
+      3vw 15vh 0 0 rgba(241,237,252,.55), 11vw 3vh 0 0 rgba(196,181,253,.5), 18vw 28vh 0 0 rgba(241,237,252,.45),
+      27vw 11vh 0 0 rgba(241,237,252,.55), 35vw 24vh 0 0 rgba(196,181,253,.45), 42vw 3vh 0 0 rgba(241,237,252,.5),
+      50vw 27vh 0 0 rgba(196,181,253,.4), 57vw 9vh 0 0 rgba(241,237,252,.55), 65vw 5vh 0 0 rgba(196,181,253,.5),
+      73vw 17vh 0 0 rgba(241,237,252,.45), 80vw 28vh 0 0 rgba(196,181,253,.4), 88vw 12vh 0 0 rgba(241,237,252,.55),
+      94vw 20vh 0 0 rgba(196,181,253,.45), 47vw 38vh 0 0 rgba(241,237,252,.4), 68vw 41vh 0 0 rgba(196,181,253,.35),
+      20vw 47vh 0 0 rgba(241,237,252,.3), 86vw 44vh 0 0 rgba(196,181,253,.3);
   }
-  @keyframes twinkle { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+  @keyframes twinkle { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
 
   .watermark {
     position: absolute; left: 50%; top: 50%; width: min(760px, 140vw);
@@ -60,7 +84,16 @@
     opacity: .045; filter: blur(1.5px); pointer-events: none; user-select: none;
   }
 
-  .hills { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 26vh; display: block; }
+  /* warm light rising gently behind the corn — the field's only lighting */
+  .horizon {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 38vh; pointer-events: none;
+    background: radial-gradient(62% 105% at 50% 102%,
+      rgba(251, 191, 36, .22), rgba(232, 168, 80, .10) 42%, rgba(124, 58, 237, .05) 62%, transparent 78%);
+  }
+  .cornfield { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 30vh; display: block; }
+  .cornfield .row-back { fill: #161029; }
+  .cornfield .row-mid { fill: #1a1331; }
+  .cornfield .row-front { fill: #1e1639; }
 
   .ff {
     position: absolute; width: 5px; height: 5px; border-radius: 50%;
@@ -146,11 +179,64 @@
   <div class="stars"></div>
   <div class="stars2"></div>
   <img class="watermark" src="logo.svg" alt="">
-  <svg class="hills" viewBox="0 0 1440 320" preserveAspectRatio="none">
-    <path fill="#1c1338" d="M0 205 C220 145 430 245 720 205 C1010 165 1210 235 1440 185 L1440 320 0 320 Z"/>
-    <path fill="#241a44" d="M0 262 C280 212 520 292 820 257 C1100 227 1280 287 1440 252 L1440 320 0 320 Z"/>
-    <path fill="none" stroke="rgba(251,191,36,.28)" stroke-width="2"
-          d="M0 262 C280 212 520 292 820 257 C1100 227 1280 287 1440 252"/>
+  <div class="moon"></div>
+  <div class="horizon"></div>
+  <svg class="cornfield" viewBox="0 0 1440 320" preserveAspectRatio="xMidYMax slice">
+    <defs>
+      <g id="corn">
+        <path d="M-2 0 L2 0 L1 -150 L-1 -150 Z"/>
+        <path d="M0 -148 L-9 -172 L-7.5 -173 L0.6 -152 Z"/>
+        <path d="M-0.8 -148 L0 -177 L1.8 -177 L1.6 -148 Z"/>
+        <path d="M0 -148 L9.5 -170 L8 -171.5 L-0.6 -152 Z"/>
+        <path d="M0 -34 C-14 -40 -30 -54 -40 -80 C-42 -85 -40 -87 -36 -83 C-24 -68 -10 -50 0 -42 Z"/>
+        <path d="M0 -58 C13 -64 27 -78 36 -102 C38 -107 36 -109 32 -105 C21 -91 9 -73 0 -66 Z"/>
+        <path d="M0 -86 C-11 -92 -22 -104 -29 -124 C-31 -129 -29 -131 -25 -127 C-16 -114 -6 -99 0 -93 Z"/>
+        <path d="M0 -108 C9 -113 18 -123 24 -139 C26 -143 24 -145 21 -141 C13 -130 5 -118 0 -113 Z"/>
+        <path d="M3 -52 C11 -56 16 -68 14 -82 C9 -85 3 -75 1 -60 Z"/>
+      </g>
+    </defs>
+    <g class="row-back">
+      <use href="#corn" transform="translate(35 306) scale(0.62)"/>
+      <use href="#corn" transform="translate(145 304) scale(0.72)"/>
+      <use href="#corn" transform="translate(250 307) scale(0.58)"/>
+      <use href="#corn" transform="translate(355 305) scale(0.70)"/>
+      <use href="#corn" transform="translate(468 306) scale(0.64)"/>
+      <use href="#corn" transform="translate(575 304) scale(0.74)"/>
+      <use href="#corn" transform="translate(688 307) scale(0.60)"/>
+      <use href="#corn" transform="translate(800 305) scale(0.70)"/>
+      <use href="#corn" transform="translate(912 306) scale(0.65)"/>
+      <use href="#corn" transform="translate(1020 304) scale(0.73)"/>
+      <use href="#corn" transform="translate(1132 307) scale(0.60)"/>
+      <use href="#corn" transform="translate(1243 305) scale(0.70)"/>
+      <use href="#corn" transform="translate(1352 306) scale(0.64)"/>
+      <use href="#corn" transform="translate(1435 305) scale(0.68)"/>
+    </g>
+    <g class="row-mid">
+      <use href="#corn" transform="translate(82 312) scale(0.84)"/>
+      <use href="#corn" transform="translate(228 313) scale(0.80)"/>
+      <use href="#corn" transform="translate(378 311) scale(0.88)"/>
+      <use href="#corn" transform="translate(520 313) scale(0.82)"/>
+      <use href="#corn" transform="translate(662 312) scale(0.86)"/>
+      <use href="#corn" transform="translate(812 313) scale(0.80)"/>
+      <use href="#corn" transform="translate(952 311) scale(0.88)"/>
+      <use href="#corn" transform="translate(1094 313) scale(0.82)"/>
+      <use href="#corn" transform="translate(1242 312) scale(0.86)"/>
+      <use href="#corn" transform="translate(1390 313) scale(0.83)"/>
+    </g>
+    <g class="row-front">
+      <use href="#corn" transform="translate(15 318) scale(1.02)"/>
+      <use href="#corn" transform="translate(158 320) scale(1.14)"/>
+      <use href="#corn" transform="translate(305 319) scale(0.96)"/>
+      <use href="#corn" transform="translate(452 320) scale(1.10)"/>
+      <use href="#corn" transform="translate(596 318) scale(1.00)"/>
+      <use href="#corn" transform="translate(738 320) scale(1.18)"/>
+      <use href="#corn" transform="translate(884 319) scale(0.98)"/>
+      <use href="#corn" transform="translate(1028 320) scale(1.12)"/>
+      <use href="#corn" transform="translate(1170 318) scale(1.00)"/>
+      <use href="#corn" transform="translate(1312 320) scale(1.15)"/>
+      <use href="#corn" transform="translate(1428 319) scale(1.05)"/>
+      <rect class="row-front" x="0" y="312" width="1440" height="8"/>
+    </g>
   </svg>
   <span class="ff"></span><span class="ff"></span><span class="ff"></span>
   <span class="ff"></span><span class="ff"></span><span class="ff"></span>
