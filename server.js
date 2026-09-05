@@ -232,7 +232,7 @@ const SALE_COST_SQL = `
 // Per-product aggregates: purchased qty/amount, sold qty/amount, current cost, remaining, stock value, profit
 async function productStats() {
   const [prodQ, puQ, sQ, cost] = await Promise.all([
-    pool.query('SELECT id, name, category, unit, description, sale_price FROM products ORDER BY name'),
+    pool.query('SELECT id, name, category, unit, description, sale_price, pack_size, pack_unit FROM products ORDER BY name'),
     pool.query('SELECT product_id, qty, unit_price, transport FROM purchases'),
     pool.query(`
       SELECT s.product_id, to_char(s.sale_date, 'YYYY-MM-DD') AS d, s.qty, s.sale_price,
@@ -246,6 +246,7 @@ async function productStats() {
     agg[p.id] = {
       id: p.id, name: p.name, category: p.category, unit: p.unit, description: p.description,
       salePrice: num(p.sale_price),
+      packSize: num(p.pack_size), packUnit: p.pack_unit || '',
       purchasedQty: 0, purchasedAmt: 0, soldQty: 0, soldAmt: 0, profit: 0
     };
   });
@@ -277,6 +278,7 @@ app.get('/api/products', async (req, res) => {
       return res.json(stats.map(p => ({
         id: p.id, name: p.name, category: p.category, unit: p.unit, description: p.description,
         salePrice: p.salePrice, remaining: p.remaining,
+        packSize: p.packSize, packUnit: p.packUnit, // needed for loose sales, not a cost secret
         purchasedQty: p.purchasedQty, soldQty: p.soldQty,
         avgCost: 0, purchasedAmt: 0, soldAmt: 0, stockValue: 0, profit: 0
       })));
@@ -287,17 +289,19 @@ app.get('/api/products', async (req, res) => {
 
 app.post('/api/products', async (req, res) => {
   try {
-    const { name, category, unit, description, sale_price } = req.body;
+    const { name, category, unit, description, sale_price, pack_size, pack_unit } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Product name is required' });
     if (num(sale_price) < 0) return res.status(400).json({ error: 'Sale price cannot be negative' });
+    if (num(pack_size) < 0) return res.status(400).json({ error: 'Pack size cannot be negative' });
     const dup = await pool.query(
       'SELECT name FROM products WHERE LOWER(TRIM(name)) = LOWER(TRIM($1))', [name]);
     if (dup.rowCount) {
       return res.status(400).json({ error: `A product named "${dup.rows[0].name}" already exists — edit it instead of adding it again` });
     }
     const { rows } = await pool.query(
-      'INSERT INTO products (name, category, unit, description, sale_price) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [name.trim(), category || 'Fertilizer', unit || 'bag', description || '', sale_price || 0]);
+      'INSERT INTO products (name, category, unit, description, sale_price, pack_size, pack_unit) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [name.trim(), category || 'Fertilizer', unit || 'bag', description || '', sale_price || 0,
+       pack_size || 0, num(pack_size) > 0 ? (pack_unit || 'kg') : '']);
     await logAction(req, 'created', 'product', `Product added: ${rows[0].name} (${rows[0].category}, per ${rows[0].unit})` +
       (num(sale_price) > 0 ? ` — fixed price ${fRs(sale_price)}` : ''));
     res.json(rows[0]);
@@ -306,20 +310,22 @@ app.post('/api/products', async (req, res) => {
 
 app.put('/api/products/:id', async (req, res) => {
   try {
-    const { name, category, unit, description, sale_price } = req.body;
+    const { name, category, unit, description, sale_price, pack_size, pack_unit } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ error: 'Product name is required' });
     if (num(sale_price) < 0) return res.status(400).json({ error: 'Sale price cannot be negative' });
+    if (num(pack_size) < 0) return res.status(400).json({ error: 'Pack size cannot be negative' });
     const dup = await pool.query(
       'SELECT name FROM products WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) AND id <> $2', [name, req.params.id]);
     if (dup.rowCount) {
       return res.status(400).json({ error: `Another product named "${dup.rows[0].name}" already exists` });
     }
-    const oldQ = await pool.query('SELECT name, category, unit, description, sale_price FROM products WHERE id = $1', [req.params.id]);
+    const oldQ = await pool.query('SELECT name, category, unit, description, sale_price, pack_size, pack_unit FROM products WHERE id = $1', [req.params.id]);
     if (!oldQ.rows.length) return res.status(404).json({ error: 'Product not found' });
     const o = oldQ.rows[0];
     const { rows } = await pool.query(
-      'UPDATE products SET name = $1, category = $2, unit = $3, description = $4, sale_price = $5 WHERE id = $6 RETURNING *',
-      [name.trim(), category || 'Fertilizer', unit || 'bag', description || '', sale_price || 0, req.params.id]);
+      'UPDATE products SET name = $1, category = $2, unit = $3, description = $4, sale_price = $5, pack_size = $6, pack_unit = $7 WHERE id = $8 RETURNING *',
+      [name.trim(), category || 'Fertilizer', unit || 'bag', description || '', sale_price || 0,
+       pack_size || 0, num(pack_size) > 0 ? (pack_unit || 'kg') : '', req.params.id]);
     const n = rows[0];
     const changes = [];
     if (o.name !== n.name) changes.push(`name "${o.name}" → "${n.name}"`);
@@ -327,6 +333,9 @@ app.put('/api/products/:id', async (req, res) => {
     if (o.unit !== n.unit) changes.push(`unit ${o.unit} → ${n.unit}`);
     if (o.description !== n.description) changes.push(`description "${o.description}" → "${n.description}"`);
     if (num(o.sale_price) !== num(n.sale_price)) changes.push(`fixed price ${fRs(o.sale_price)} → ${fRs(n.sale_price)}`);
+    if (num(o.pack_size) !== num(n.pack_size) || o.pack_unit !== n.pack_unit) {
+      changes.push(`pack ${num(o.pack_size) > 0 ? `${num(o.pack_size)} ${o.pack_unit}` : 'none'} → ${num(n.pack_size) > 0 ? `${num(n.pack_size)} ${n.pack_unit}` : 'none'}`);
+    }
     if (changes.length) {
       await logAction(req, 'edited', 'product', `Product "${n.name}" edited — ${changes.join(', ')}`);
     }
@@ -467,7 +476,7 @@ app.get('/api/sales', async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT s.*, to_char(s.sale_date, 'YYYY-MM-DD') AS sale_date,
-             p.name, p.category, p.unit,
+             p.name, p.category, p.unit, p.pack_size, p.pack_unit,
              COALESCE(sp.paid, 0) AS paid,
              COALESCE(sr.rqty, 0) AS returned,
              COALESCE(sr.refunded, 0) AS refunded
@@ -1689,7 +1698,7 @@ async function restoreData(b) {
         await c.query(`SELECT setval(pg_get_serial_sequence('${table}','id'), (SELECT MAX(id) FROM ${table}))`);
       }
     };
-    await ins('products', b.products, ['id', 'name', 'category', 'unit', 'description', 'sale_price', 'created_at'], { sale_price: 0 });
+    await ins('products', b.products, ['id', 'name', 'category', 'unit', 'description', 'sale_price', 'pack_size', 'pack_unit', 'created_at'], { sale_price: 0, pack_size: 0, pack_unit: '' });
     await ins('partners', b.partners,
       ['id', 'name', 'active', 'left_date', 'final_invested', 'final_profit', 'final_expense_share', 'final_net', 'created_at'],
       { active: true, final_invested: 0, final_profit: 0, final_expense_share: 0, final_net: 0 });

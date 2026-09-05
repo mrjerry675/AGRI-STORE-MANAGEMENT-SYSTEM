@@ -198,6 +198,15 @@
             <label>Fixed Sale Price (Rs)</label>
             <input type="number" id="pSalePrice" min="0" step="any" placeholder="auto-fills on sale">
           </div>
+          <div class="field">
+            <label>One Unit Contains (for loose sales)</label>
+            <div style="display:flex;gap:8px">
+              <input type="number" id="pPackSize" min="0" step="any" placeholder="e.g. 50" style="flex:1">
+              <select id="pPackUnit" style="width:90px">
+                <option>kg</option><option>g</option><option>L</option><option>ml</option>
+              </select>
+            </div>
+          </div>
           <div class="field grow">
             <label>Description</label>
             <input type="text" id="pDesc" placeholder="e.g. 46% Nitrogen, 45 kg bag">
@@ -341,10 +350,12 @@
             <div class="field">
               <label>Quantity</label>
               <input type="number" id="sellQty" min="0" step="any" placeholder="0">
+              <button type="button" class="btn-ghost" id="sellLooseBtn" style="display:none;margin-top:6px;font-size:13px;padding:5px 10px">⚖️ Sell Loose (kg)</button>
             </div>
             <div class="field">
               <label>Sale Price per unit (Rs)</label>
               <input type="number" id="sellPrice" min="0" step="any" placeholder="0.00">
+              <div class="hint" id="looseHint"></div>
             </div>
           </div>
           <div id="extraItems"></div>
@@ -925,6 +936,26 @@
     <div class="modal-actions">
       <button class="btn-primary" id="refSave">↩ Save Refund</button>
       <button class="btn-ghost" id="refCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="looseModal">
+  <div class="modal">
+    <h2 class="card-title">⚖️ Sell Loose Quantity</h2>
+    <p class="pay-info" id="looseInfo"></p>
+    <div class="field">
+      <label id="looseAmtLabel">Quantity Being Sold</label>
+      <input type="number" id="looseAmt" min="0" step="any" placeholder="e.g. 2">
+    </div>
+    <div class="field">
+      <label>Total Price Charged (Rs)</label>
+      <input type="number" id="loosePrice" min="0" step="any" placeholder="e.g. 500">
+    </div>
+    <div class="hint" id="looseCalcHint"></div>
+    <div class="modal-actions">
+      <button class="btn-primary" id="looseOk">✔ Put in Sale</button>
+      <button class="btn-ghost" id="looseCancel">Cancel</button>
     </div>
   </div>
 </div>

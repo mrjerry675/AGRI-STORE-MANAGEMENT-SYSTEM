@@ -43,7 +43,7 @@ async function main() {
       }
     };
 
-    await ins('products', b.products, ['id', 'name', 'category', 'unit', 'description', 'sale_price', 'created_at'], { sale_price: 0 });
+    await ins('products', b.products, ['id', 'name', 'category', 'unit', 'description', 'sale_price', 'pack_size', 'pack_unit', 'created_at'], { sale_price: 0, pack_size: 0, pack_unit: '' });
     await ins('partners', b.partners,
       ['id', 'name', 'active', 'left_date', 'final_invested', 'final_profit', 'final_expense_share', 'final_net', 'created_at'],
       { active: true, final_invested: 0, final_profit: 0, final_expense_share: 0, final_net: 0 });

@@ -159,6 +159,8 @@ async function main() {
   // upgrade older databases: columns that were added after the first release
   await db.query(`
     ALTER TABLE products  ADD COLUMN IF NOT EXISTS sale_price NUMERIC NOT NULL DEFAULT 0 CHECK (sale_price >= 0);
+    ALTER TABLE products  ADD COLUMN IF NOT EXISTS pack_size NUMERIC NOT NULL DEFAULT 0 CHECK (pack_size >= 0);
+    ALTER TABLE products  ADD COLUMN IF NOT EXISTS pack_unit TEXT NOT NULL DEFAULT '';
     ALTER TABLE purchases ADD COLUMN IF NOT EXISTS transport NUMERIC NOT NULL DEFAULT 0 CHECK (transport >= 0);
     ALTER TABLE sales     ADD COLUMN IF NOT EXISTS receipt_group INTEGER;
     ALTER TABLE partners  ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT true;

@@ -503,6 +503,8 @@ function editProduct(id) {
   $('pName').value = p.name; $('pCategory').value = p.category;
   $('pUnit').value = p.unit; $('pDesc').value = p.description;
   $('pSalePrice').value = p.salePrice > 0 ? p.salePrice : '';
+  $('pPackSize').value = p.packSize > 0 ? p.packSize : '';
+  $('pPackUnit').value = p.packUnit || 'kg';
   $('pSaveBtn').textContent = '✔ Update Product';
   $('pCancel').style.display = '';
   $('pName').focus();
@@ -511,7 +513,7 @@ function editProduct(id) {
 
 function resetProductForm() {
   editProductId = null;
-  $('pName').value = ''; $('pDesc').value = ''; $('pSalePrice').value = '';
+  $('pName').value = ''; $('pDesc').value = ''; $('pSalePrice').value = ''; $('pPackSize').value = '';
   $('pSaveBtn').textContent = '+ Save Product';
   $('pCancel').style.display = 'none';
 }
@@ -520,10 +522,12 @@ $('pCancel').addEventListener('click', resetProductForm);
 $('productForm').addEventListener('submit', async ev => {
   ev.preventDefault();
   if (!checkMoneyOpt($('pSalePrice').value, 'Fixed sale price')) return;
+  if (!checkMoneyOpt($('pPackSize').value, 'Pack size')) return;
   const body = {
     name: $('pName').value, category: $('pCategory').value,
     unit: $('pUnit').value, description: $('pDesc').value,
-    sale_price: $('pSalePrice').value || 0
+    sale_price: $('pSalePrice').value || 0,
+    pack_size: $('pPackSize').value || 0, pack_unit: $('pPackUnit').value
   };
   try {
     if (editProductId) {
@@ -751,6 +755,13 @@ async function loadSales() {
   } catch (e) { toast(e.message, true); }
 }
 
+// "0.36 bag" is meaningless at the counter — show the loose amount beside it
+function looseNote(q, packSize, packUnit) {
+  const n = parseFloat(q) || 0, ps = parseFloat(packSize) || 0;
+  if (ps <= 0 || Number.isInteger(n)) return '';
+  return ` <span class="share">(${qty(n * ps)} ${esc(packUnit)})</span>`;
+}
+
 function renderSales() {
   let rows = saleCatFilter
     ? saleCache.filter(r => r.category === saleCatFilter)
@@ -764,7 +775,7 @@ function renderSales() {
       <td>${fmtDate(r.sale_date)}</td>
       <td class="b">${esc(r.name)} ${badge(r.category)}${r.replaced_note
         ? `<br><span class="ret-note">🔁 ${esc(r.replaced_note)}</span>` : ''}</td>
-      <td class="r">${qty(r.effQty)} ${esc(r.unit)}${r.returned > 0
+      <td class="r">${qty(r.effQty)} ${esc(r.unit)}${looseNote(r.effQty, r.pack_size, r.pack_unit)}${r.returned > 0
         ? ` <span class="ret-note">↩ ${qty(r.returned)} ret.</span>` : ''}</td>
       <td class="r">${rs(r.sale_price)}</td>
       <td class="r b">${rs(r.effTotal)}</td>
@@ -802,8 +813,8 @@ const updSellTotal = () => {
   });
   $('sellTotal').textContent = rs(total);
 };
-$('sellQty').addEventListener('input', updSellTotal);
-$('sellPrice').addEventListener('input', updSellTotal);
+$('sellQty').addEventListener('input', () => { updSellTotal(); $('looseHint').textContent = ''; });
+$('sellPrice').addEventListener('input', () => { updSellTotal(); $('looseHint').textContent = ''; });
 
 // extra product lines for one receipt
 function extraItemRow() {
@@ -979,13 +990,85 @@ $('buyProduct').addEventListener('change', () => {
 
 // picking a product auto-fills its fixed price and shows remaining stock
 const stockHintHtml = p => p
-  ? `<span class="${p.remaining <= 10 ? 'due' : 'paid-ok'}">${qty(p.remaining)} ${esc(p.unit)} in stock</span>`
+  ? `<span class="${p.remaining <= 10 ? 'due' : 'paid-ok'}">${qty(p.remaining)} ${esc(p.unit)} in stock</span>` +
+    (p.packSize > 0 ? ` <span class="share">(= ${qty(p.remaining * p.packSize)} ${esc(p.packUnit)})</span>` : '')
   : '';
 
 $('sellProduct').addEventListener('change', () => {
   const p = productCache.find(x => String(x.id) === $('sellProduct').value);
   if (p && p.salePrice > 0) { $('sellPrice').value = p.salePrice; updSellTotal(); }
   $('sellStockHint').innerHTML = stockHintHtml(p);
+  // the loose-quantity helper only makes sense when the product has a pack size
+  $('sellLooseBtn').style.display = (p && p.packSize > 0 && !editSaleId) ? '' : 'none';
+  if (p && p.packSize > 0) $('sellLooseBtn').textContent = `⚖️ Sell Loose (${p.packUnit})`;
+  $('looseHint').textContent = '';
+});
+
+// ---------- loose-quantity sales: sell part of a bag (e.g. 2 kg of a 50 kg bag)
+// without touching the books — the amount is converted to a fraction of a unit
+// and an equivalent per-unit price, so stock, costing and profit stay exact ----
+let looseTarget = null;
+
+$('sellLooseBtn').addEventListener('click', () => {
+  const p = productCache.find(x => String(x.id) === $('sellProduct').value);
+  if (!p || !(p.packSize > 0)) return;
+  looseTarget = p;
+  $('looseInfo').innerHTML =
+    `<b>${esc(p.name)}</b> — one ${esc(p.unit)} contains <b>${qty(p.packSize)} ${esc(p.packUnit)}</b>.` +
+    (p.salePrice > 0 ? ` Full ${esc(p.unit)} sells for ${rs(p.salePrice)} (≈ ${rs(p.salePrice / p.packSize)}/${esc(p.packUnit)}).` : '') +
+    `<br><span class="share">In stock: ${qty(p.remaining)} ${esc(p.unit)} = ${qty(p.remaining * p.packSize)} ${esc(p.packUnit)}</span>`;
+  $('looseAmtLabel').textContent = `${esc(p.packUnit)} Being Sold`;
+  $('looseAmt').value = '';
+  $('loosePrice').value = '';
+  $('looseCalcHint').textContent = '';
+  $('looseModal').classList.add('show');
+  $('looseAmt').focus();
+});
+
+// convert the loose amount to (fraction of a unit, equivalent per-unit price)
+function looseCalc() {
+  const p = looseTarget;
+  const amt = parseFloat($('looseAmt').value) || 0;
+  const charged = parseFloat($('loosePrice').value) || 0;
+  if (!p || amt <= 0) return null;
+  const qtyUnits = Math.round((amt / p.packSize) * 10000) / 10000;
+  if (qtyUnits <= 0) return null;
+  const priceUnit = charged > 0 ? Math.round((charged / qtyUnits) * 10000) / 10000 : 0;
+  return { amt, charged, qtyUnits, priceUnit };
+}
+
+function updateLooseHint() {
+  const c = looseCalc();
+  if (!c) { $('looseCalcHint').textContent = ''; return; }
+  if (c.qtyUnits > looseTarget.remaining + 0.001) {
+    $('looseCalcHint').innerHTML = `<span class="due">✖ Only ${qty(looseTarget.remaining * looseTarget.packSize)} ${esc(looseTarget.packUnit)} in stock</span>`;
+    return;
+  }
+  $('looseCalcHint').innerHTML =
+    `${qty(c.amt)} ${esc(looseTarget.packUnit)} = <b>${c.qtyUnits} ${esc(looseTarget.unit)}</b>` +
+    (c.charged > 0 ? ` @ ${rs(c.priceUnit)}/${esc(looseTarget.unit)} — total <b>${rs(c.charged)}</b>` : ' — now enter the price charged');
+}
+$('looseAmt').addEventListener('input', updateLooseHint);
+$('loosePrice').addEventListener('input', updateLooseHint);
+
+function closeLoose() { $('looseModal').classList.remove('show'); looseTarget = null; }
+$('looseCancel').addEventListener('click', closeLoose);
+$('looseModal').addEventListener('click', ev => { if (ev.target === $('looseModal')) closeLoose(); });
+
+$('looseOk').addEventListener('click', () => {
+  const c = looseCalc();
+  if (!c) { toast('Enter the quantity being sold', true); return; }
+  if (!(c.charged > 0)) { toast('Enter the total price charged', true); return; }
+  if (c.qtyUnits > looseTarget.remaining + 0.001) {
+    toast(`Only ${qty(looseTarget.remaining * looseTarget.packSize)} ${looseTarget.packUnit} in stock`, true);
+    return;
+  }
+  $('sellQty').value = c.qtyUnits;
+  $('sellPrice').value = c.priceUnit;
+  $('looseHint').innerHTML = `⚖️ ${qty(c.amt)} ${esc(looseTarget.packUnit)} loose = ${c.qtyUnits} ${esc(looseTarget.unit)} — total ${rs(c.charged)}`;
+  updSellTotal();
+  closeLoose();
+  $('sellPaid') && $('sellPaid').focus();
 });
 $('extraItems').addEventListener('change', ev => {
   if (ev.target.classList && ev.target.classList.contains('xProduct')) {
@@ -1073,6 +1156,7 @@ function editSale(id) {
   $('custName').value = r.customer_name; $('custPhone').value = r.phone; $('custAddress').value = r.address;
   $('extraItems').innerHTML = '';
   $('addItemBtn').style.display = 'none';
+  $('sellLooseBtn').style.display = 'none'; $('looseHint').textContent = '';
   // only date and customer details are editable — item, price and payment are locked
   setLocked(['sellProduct', 'sellQty', 'sellPrice', 'sellPayment', 'sellBank'], true);
   $('sellPaidField').style.display = 'none'; // payments are edited with the 💰 button, not here
@@ -1093,6 +1177,9 @@ function resetSaleForm() {
   $('sellPaidField').style.display = '';
   $('sellSaveBtn').textContent = '+ Save Sale';
   $('sellCancel').style.display = 'none';
+  $('looseHint').textContent = '';
+  const selP = productCache.find(x => String(x.id) === $('sellProduct').value);
+  $('sellLooseBtn').style.display = (selP && selP.packSize > 0) ? '' : 'none';
   updSellTotal();
 }
 $('sellCancel').addEventListener('click', resetSaleForm);
@@ -1352,8 +1439,14 @@ function printReceipt(id) {
 
   const itemRows = items.map(x => {
     const ret = parseFloat(x.returned) || 0;
+    // loose sales print as the real-world amount (e.g. "2 kg loose"), not "0.04 bag"
+    const ps = parseFloat(x.pack_size) || 0;
+    const isLoose = ps > 0 && !Number.isInteger(parseFloat(x.qty));
+    const qtyLine = isLoose
+      ? `${qty(parseFloat(x.qty) * ps)} ${esc(x.pack_unit)} (loose)`
+      : `${qty(x.qty)} ${esc(x.unit)} × ${rs(x.sale_price)}`;
     return `<tr><td><b>${esc(x.name)}</b> <span style="font-size:12px;color:#444">(${esc(x.category)})</span><br>
-        <span style="font-size:12.5px;color:#444">${qty(x.qty)} ${esc(x.unit)} × ${rs(x.sale_price)}</span></td>
+        <span style="font-size:12.5px;color:#444">${qtyLine}</span></td>
         <td class="r">${rs(x.qty * x.sale_price)}</td></tr>` +
       (ret > 0 ? `<tr><td style="color:#b00020">↩ Returned ${qty(ret)} ${esc(x.unit)}</td>
         <td class="r" style="color:#b00020">− ${rs(ret * x.sale_price)}</td></tr>` : '') +
