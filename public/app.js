@@ -762,6 +762,10 @@ function looseNote(q, packSize, packUnit) {
   return ` <span class="share">(${qty(n * ps)} ${esc(packUnit)})</span>`;
 }
 
+// items sold together on one receipt get a shared colour stripe + receipt tag,
+// so they read as one purchase even though each product keeps its own row
+const GRP_COLORS = ['#a78bfa', '#fbbf24', '#4ade80', '#38bdf8', '#f472b6'];
+
 function renderSales() {
   let rows = saleCatFilter
     ? saleCache.filter(r => r.category === saleCatFilter)
@@ -771,9 +775,22 @@ function renderSales() {
       (r.customer_name || '').toLowerCase().includes(saleSearchTerm) ||
       (r.phone || '').toLowerCase().includes(saleSearchTerm));
   }
-  $('saleRows').innerHTML = rows.length ? rows.map(r => `<tr>
+  // receipts with more than one line, counted over ALL sales so a filter
+  // hiding one line doesn't make the rest lose their group marking
+  const grpLines = {}, grpTotal = {};
+  saleCache.forEach(s => {
+    const g = s.receipt_group || s.id;
+    grpLines[g] = (grpLines[g] || 0) + 1;
+    grpTotal[g] = (grpTotal[g] || 0) + (parseFloat(s.effTotal) || 0);
+  });
+  $('saleRows').innerHTML = rows.length ? rows.map(r => {
+    const g = r.receipt_group || r.id;
+    const isGrp = grpLines[g] > 1;
+    const gColor = GRP_COLORS[g % GRP_COLORS.length];
+    return `<tr${isGrp ? ` class="rgrp" style="--grp:${gColor}"` : ''}>
       <td>${fmtDate(r.sale_date)}</td>
-      <td class="b">${esc(r.name)} ${badge(r.category)}${r.replaced_note
+      <td class="b">${esc(r.name)} ${badge(r.category)}${isGrp
+        ? ` <span class="rcpt-tag" title="Bought together on receipt KD-${g} — ${grpLines[g]} items, total ${rs(grpTotal[g])}">🧾 KD-${g}</span>` : ''}${r.replaced_note
         ? `<br><span class="ret-note">🔁 ${esc(r.replaced_note)}</span>` : ''}</td>
       <td class="r">${qty(r.effQty)} ${esc(r.unit)}${looseNote(r.effQty, r.pack_size, r.pack_unit)}${r.returned > 0
         ? ` <span class="ret-note">↩ ${qty(r.returned)} ret.</span>` : ''}</td>
@@ -788,7 +805,8 @@ function renderSales() {
       <td>${esc(r.customer_name)}</td>
       <td>${esc(r.phone)}</td>
       <td>${r.effQty > 0.001 && withinReturnWindow(r.sale_date) ? `<button class="ret-btn" onclick="openReplace(${r.id})" title="Replace product (within 3 days)">🔁</button>` : ''}${isAdmin() && r.effQty > 0.001 ? `<button class="ret-btn" onclick="openRefund(${r.id})" title="Exception refund (admin only)">↩</button>` : ''}<button class="print-btn" onclick="printReceipt(${r.id})" title="Print receipt">🖨️</button>${isAdmin() ? `<button class="edit-btn" onclick="editSale(${r.id})" title="Edit">✏️</button><button class="del-btn" onclick="delSale(${r.id})">🗑️</button>` : ''}</td>
-    </tr>`).join('') : `<tr><td colspan="11" class="empty-row">${saleSearchTerm
+    </tr>`;
+  }).join('') : `<tr><td colspan="11" class="empty-row">${saleSearchTerm
       ? 'No sales matching "' + esc(saleSearchTerm) + '"'
       : saleCatFilter
         ? 'No ' + esc(saleCatFilter.toLowerCase()) + ' sales yet'

@@ -716,6 +716,23 @@ tr.editing td { background: rgba(251, 191, 36, .07); }
   .dash-lower { grid-template-columns: 1fr; }
 }
 
+/* ---------- receipt groups: items bought together share a stripe + tag ---------- */
+tr.rgrp td:first-child { border-left: 4px solid var(--grp, var(--violet)); }
+tr.rgrp td { background: rgba(167, 139, 250, .045); }
+.rcpt-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 9px;
+  border: 1.5px solid var(--grp, var(--violet));
+  color: var(--grp, var(--violet));
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  vertical-align: middle;
+  white-space: nowrap;
+  cursor: help;
+}
+
 /* ---------- product search suggestions (replaces the browser's plain datalist) ---------- */
 .suggest-holder { position: relative; }
 .suggest-box {
