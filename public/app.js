@@ -1042,7 +1042,7 @@ $('dayCloseBtn').addEventListener('click', () => {
       <tr><td>Cash received</td><td class="r">${rs(d.cashIn)}</td></tr>
       <tr><td>Bank / wallet received</td><td class="r">${rs(d.bankIn)}</td></tr>
       <tr><td>Cash paid to suppliers</td><td class="r">− ${rs(d.supplierCashOut)}</td></tr>
-      ${d.refundsOut > 0.001 ? `<tr><td>Refunds paid out (exceptions)</td><td class="r">− ${rs(d.refundsOut)}</td></tr>` : ''}
+      ${d.refundsCashOut > 0.001 ? `<tr><td>Refunds paid out in cash (exceptions)</td><td class="r">− ${rs(d.refundsCashOut)}</td></tr>` : ''}
       ${d.purchasesCount > 0 ? `<tr><td>Purchases recorded (${d.purchasesCount})</td><td class="r">${rs(d.purchasesTotal)}</td></tr>` : ''}
       <tr class="net"><td>NET CASH TO HAND OVER</td><td class="r">${rs(d.netCash)}</td></tr>
     </table>

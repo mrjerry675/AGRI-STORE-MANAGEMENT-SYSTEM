@@ -79,6 +79,7 @@ app.get('/api/myday', async (req, res) => {
         (SELECT COALESCE(SUM(amount), 0) FROM sale_payments WHERE pay_date = CURRENT_DATE AND method = 'Cash') cash_in,
         (SELECT COALESCE(SUM(amount), 0) FROM sale_payments WHERE pay_date = CURRENT_DATE AND method <> 'Cash') bank_in,
         (SELECT COALESCE(SUM(refund), 0) FROM sale_returns WHERE return_date = CURRENT_DATE) refunds_out,
+        (SELECT COALESCE(SUM(refund), 0) FROM sale_returns WHERE return_date = CURRENT_DATE AND method = 'Cash') refunds_cash_out,
         (SELECT COUNT(*) FROM sale_returns WHERE return_date = CURRENT_DATE) returns_count,
         (SELECT COALESCE(SUM(amount), 0) FROM purchase_payments WHERE pay_date = CURRENT_DATE AND method = 'Cash') supplier_cash_out,
         (SELECT COUNT(*) FROM purchases WHERE purchase_date = CURRENT_DATE) purchases_count,
@@ -87,10 +88,13 @@ app.get('/api/myday', async (req, res) => {
     res.json({
       salesCount: parseInt(r.sales_count, 10), salesTotal: num(r.sales_total),
       cashIn: num(r.cash_in), bankIn: num(r.bank_in),
-      refundsOut: num(r.refunds_out), returnsCount: parseInt(r.returns_count, 10),
+      refundsOut: num(r.refunds_out), refundsCashOut: num(r.refunds_cash_out),
+      returnsCount: parseInt(r.returns_count, 10),
       supplierCashOut: num(r.supplier_cash_out),
       purchasesCount: parseInt(r.purchases_count, 10), purchasesTotal: num(r.purchases_total),
-      netCash: num(r.cash_in) - num(r.refunds_out) - num(r.supplier_cash_out)
+      // only refunds handed back as physical cash leave the drawer —
+      // bank/wallet refunds are netted in the bank figures instead
+      netCash: num(r.cash_in) - num(r.refunds_cash_out) - num(r.supplier_cash_out)
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
