@@ -1656,16 +1656,17 @@ async function loadWaDeals() {
   try { waDeals = (await api('/api/settings/wa_deals')).value || ''; } catch { /* keep old */ }
 }
 
+// plain text only — emojis show as broken boxes on some phones
 function waThanksText(r) {
   const firstName = (r.customer_name || '').trim().split(/\s+/)[0];
-  return `🌾 *Kisan Depot* 🌾\n` +
+  return `*Kisan Depot*\n` +
     (firstName ? `شکریہ ${firstName} صاحب!\n` : `شکریہ!\n`) +
-    `Thank you for shopping with us 💚\n\n` +
-    `📍 وڈانہ اڈا، مین فیروزپور روڈ، قصور\n` +
-    `📞 0305-9191759\n` +
-    `Fertilizers • Seeds • Pesticides\n` +
-    (waDeals ? `\n🔥 *In these days:* ${waDeals}\n` : '') +
-    `\nآپ کا اعتماد ہمارا سرمایہ ہے 🌾`;
+    `Thank you for shopping with us.\n\n` +
+    `وڈانہ اڈا، مین فیروزپور روڈ، قصور\n` +
+    `0305-9191759\n` +
+    `Fertilizers - Seeds - Pesticides\n` +
+    (waDeals ? `\n*In these days:* ${waDeals}\n` : '') +
+    `\nآپ کا اعتماد ہمارا سرمایہ ہے`;
 }
 
 function waThanks(id) {
