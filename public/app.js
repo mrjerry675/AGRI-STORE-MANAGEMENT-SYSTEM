@@ -745,9 +745,25 @@ $('saleSearchClear').addEventListener('click', () => {
   $('saleSearch').focus();
 });
 
+// directory of known customers, rebuilt from the sales list — used to
+// auto-fill repeat customers so "Akram" doesn't become three different people
+let custDir = [];
+function buildCustDir() {
+  const map = {};
+  saleCache.forEach(s => { // saleCache is newest-first, so first hit = latest details
+    const name = (s.customer_name || '').trim();
+    if (!name) return;
+    const key = name.toLowerCase() + '|' + String(s.phone || '').trim();
+    if (!map[key]) map[key] = { name, phone: String(s.phone || '').trim(), address: (s.address || '').trim() };
+    else if (!map[key].address && (s.address || '').trim()) map[key].address = s.address.trim();
+  });
+  custDir = Object.values(map);
+}
+
 async function loadSales() {
   try {
     saleCache = await api('/api/sales');
+    buildCustDir();
     const today = todayISO();
     const todayTotal = saleCache
       .filter(r => String(r.sale_date).slice(0, 10) === today)
@@ -824,6 +840,90 @@ $('custPhone').addEventListener('input', () => {
   const clean = $('custPhone').value.replace(/[^\d+\-\s()]/g, '');
   if (clean !== $('custPhone').value) { $('custPhone').value = clean; toast('Phone numbers cannot contain letters', true); }
 });
+
+// ---------- repeat-customer autofill ----------
+const phoneDigits = v => String(v || '').replace(/\D/g, '');
+
+function fillCustomer(c) {
+  $('custName').value = c.name;
+  $('custPhone').value = c.phone;
+  if (c.address) $('custAddress').value = c.address;
+  $('custPhoneHint').innerHTML = '<span class="paid-ok">✓ Repeat customer — details filled</span>';
+}
+
+// typing a known phone number pulls the customer's name and address
+$('custPhone').addEventListener('input', () => {
+  const d = phoneDigits($('custPhone').value);
+  const hint = $('custPhoneHint');
+  if (d.length < 7) { hint.textContent = ''; return; }
+  const match = custDir.find(c => phoneDigits(c.phone) === d);
+  if (!match) { hint.textContent = ''; return; }
+  const typed = $('custName').value.trim();
+  if (!typed) {
+    $('custName').value = match.name;
+    if (match.address && !$('custAddress').value.trim()) $('custAddress').value = match.address;
+    hint.innerHTML = `<span class="paid-ok">✓ Repeat customer: ${esc(match.name)}</span>`;
+  } else if (typed.toLowerCase() !== match.name.toLowerCase()) {
+    // a different spelling — offer the saved one so the khata stays one person
+    hint.innerHTML = `📒 This number is saved as <b style="cursor:pointer;text-decoration:underline" ` +
+      `onclick="fillCustomer(custDir.find(c => phoneDigits(c.phone) === '${d}'))">${esc(match.name)}</b> — tap to use`;
+  } else {
+    if (match.address && !$('custAddress').value.trim()) $('custAddress').value = match.address;
+    hint.innerHTML = `<span class="paid-ok">✓ Repeat customer</span>`;
+  }
+});
+
+// typing a name shows known customers in the same themed dropdown as products
+(function attachCustomerSuggest() {
+  const input = $('custName');
+  const box = document.createElement('div');
+  box.className = 'suggest-box';
+  input.parentElement.classList.add('suggest-holder');
+  input.insertAdjacentElement('afterend', box);
+  let items = [], hi = 0;
+
+  const close = () => { box.style.display = 'none'; box.innerHTML = ''; };
+  const render = () => {
+    if (!items.length) { close(); return; }
+    box.innerHTML = items.map((c, i) => `
+      <div class="suggest-item${i === hi ? ' hi' : ''}" data-i="${i}">
+        <span class="s-name">${esc(c.name)}</span>
+        <span class="s-meta"><span class="s-stock">${esc(c.phone || c.address || '')}</span></span>
+      </div>`).join('');
+    box.style.top = (input.offsetTop + input.offsetHeight + 4) + 'px';
+    box.style.display = 'block';
+  };
+  const update = () => {
+    const q = input.value.trim().toLowerCase();
+    if (!q) { close(); return; } // an empty name field stays quiet — most sales are walk-ins
+    const starts = [], contains = [];
+    custDir.forEach(c => {
+      const n = c.name.toLowerCase();
+      if (n.startsWith(q)) starts.push(c);
+      else if (n.includes(q)) contains.push(c);
+    });
+    items = starts.concat(contains).slice(0, 8);
+    hi = 0;
+    render();
+  };
+  const pick = c => { close(); fillCustomer(c); };
+
+  input.addEventListener('input', update);
+  input.addEventListener('keydown', ev => {
+    const open = box.style.display === 'block' && items.length;
+    if (ev.key === 'ArrowDown' && open) { ev.preventDefault(); hi = (hi + 1) % items.length; render(); }
+    else if (ev.key === 'ArrowUp' && open) { ev.preventDefault(); hi = (hi - 1 + items.length) % items.length; render(); }
+    else if (ev.key === 'Enter' && open) { ev.preventDefault(); pick(items[hi]); }
+    else if (ev.key === 'Escape') close();
+  });
+  box.addEventListener('mousedown', ev => {
+    const el = ev.target.closest('.suggest-item');
+    if (!el) return;
+    ev.preventDefault();
+    pick(items[+el.dataset.i]);
+  });
+  input.addEventListener('blur', () => setTimeout(close, 150));
+})();
 
 const updSellTotal = () => {
   let total = (parseFloat($('sellQty').value) || 0) * (parseFloat($('sellPrice').value) || 0);
@@ -1174,6 +1274,7 @@ function editSale(id) {
     $('bankField').style.display = 'none';
   }
   $('custName').value = r.customer_name; $('custPhone').value = r.phone; $('custAddress').value = r.address;
+  $('custPhoneHint').textContent = '';
   $('extraItems').innerHTML = '';
   $('addItemBtn').style.display = 'none';
   $('sellLooseBtn').style.display = 'none'; $('looseHint').textContent = '';
@@ -1193,6 +1294,7 @@ function resetSaleForm() {
   $('extraItems').innerHTML = '';
   $('addItemBtn').style.display = '';
   $('custName').value = ''; $('custPhone').value = ''; $('custAddress').value = '';
+  $('custPhoneHint').textContent = '';
   setLocked(['sellProduct', 'sellQty', 'sellPrice', 'sellPayment', 'sellBank'], false);
   $('sellPaidField').style.display = '';
   $('sellSaveBtn').textContent = '+ Save Sale';
