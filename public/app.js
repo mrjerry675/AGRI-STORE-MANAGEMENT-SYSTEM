@@ -855,8 +855,38 @@ $('custPhone').addEventListener('input', () => {
 // ---------- repeat-customer autofill ----------
 const phoneDigits = v => String(v || '').replace(/\D/g, '');
 
-const cardNote = phone => cardFor(phone)
-  ? `<br><span style="color:var(--gold);font-weight:600">💳 Kisan Card — 10% discount applied automatically</span>` : '';
+// gold note when the number holds a card; otherwise (admin, valid number) an
+// offer to issue one right here — the discount then applies to THIS sale too
+function cardNote(phone) {
+  if (cardFor(phone)) {
+    return `<br><span style="color:var(--gold);font-weight:600">💳 Kisan Card — 10% discount applied automatically</span>`;
+  }
+  if (isAdmin() && phoneDigits(phone).length >= 7) {
+    return `<br><button type="button" class="btn-ghost" style="margin-top:5px;font-size:12.5px;padding:3px 10px" ` +
+      `onclick="issueCardFromSale()">💳 Issue Kisan Card — 10% off from this sale</button>`;
+  }
+  return '';
+}
+
+// issue a card straight from the New Sale form (e.g. a first-time customer);
+// it lands in the same registry, so the khata page shows it from now on
+async function issueCardFromSale() {
+  const name = $('custName').value.trim();
+  const phone = $('custPhone').value.trim();
+  if (!name) { toast('Enter the customer name first', true); $('custName').focus(); return; }
+  if (!isName(name)) { toast('Customer name should have letters only — no numbers', true); return; }
+  const ok = await uiConfirm('💳 Issue Kisan Card?',
+    `Give <b>${esc(name)}</b> (${esc(phone)}) a Kisan Card?<br><br>` +
+    `They get <b>10% off automatically</b> starting with THIS sale, and the card shows on their khata from now on.`,
+    '💳 Issue Card', false);
+  if (!ok) return;
+  try {
+    await post('/api/cards', { name, phone });
+    await loadCards();
+    toast(`Kisan Card issued to ${name} ✔ — 10% off applies to this sale`);
+    $('custPhone').dispatchEvent(new Event('input')); // refresh the hint and the discounted total
+  } catch (e) { toast(e.message, true); }
+}
 
 function fillCustomer(c) {
   $('custName').value = c.name;
