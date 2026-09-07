@@ -212,25 +212,39 @@ $('logsPwCancel').addEventListener('click', () => closeLogsModal(true));
 $('logsModal').addEventListener('click', ev => { if (ev.target === $('logsModal')) closeLogsModal(true); });
 
 // ---------- dashboard ----------
-// the money-flow cards default to the current month; All Time is one click away
+// the money-flow cards default to the current month; All Time is one click
+// away, and any past month can be picked from the dropdown
 let dashPeriod = 'month';
+let dashMonth = ''; // 'YYYY-MM' when a specific month is picked
 
 $('dashPeriod').addEventListener('click', ev => {
   const btn = ev.target.closest('.chip');
   if (!btn) return;
   dashPeriod = btn.dataset.period;
+  dashMonth = '';
+  $('dashMonth').value = '';
   document.querySelectorAll('#dashPeriod .chip').forEach(c => c.classList.toggle('active', c === btn));
+  loadDashboard();
+});
+
+$('dashMonth').addEventListener('change', () => {
+  dashMonth = $('dashMonth').value;
+  if (!dashMonth) { dashPeriod = 'month'; }
+  document.querySelectorAll('#dashPeriod .chip').forEach(c =>
+    c.classList.toggle('active', !dashMonth && c.dataset.period === dashPeriod));
   loadDashboard();
 });
 
 async function loadDashboard() {
   try {
-    const d = await api('/api/dashboard' + (dashPeriod === 'month' ? '?period=month' : ''));
-    const monthName = new Date().toLocaleDateString('en-GB', { month: 'long' });
-    const inPeriod = dashPeriod === 'month' ? `in ${monthName}` : 'so far';
-    $('stSalesSub').textContent = dashPeriod === 'month' ? `sold in ${monthName}` : 'everything sold so far';
-    $('stProfitSub').textContent = `earned on sales ${inPeriod}`;
-    $('stExpSub').textContent = dashPeriod === 'month' ? `expenses in ${monthName}` : 'rent, bills, labour and other costs';
+    const qs = dashMonth ? `?month=${dashMonth}` : (dashPeriod === 'month' ? '?period=month' : '');
+    const d = await api('/api/dashboard' + qs);
+    const periodName = dashMonth
+      ? monthLabel(dashMonth)
+      : (dashPeriod === 'month' ? new Date().toLocaleDateString('en-GB', { month: 'long' }) : '');
+    $('stSalesSub').textContent = periodName ? `sold in ${periodName}` : 'everything sold so far';
+    $('stProfitSub').textContent = periodName ? `earned on sales in ${periodName}` : 'earned on everything sold so far';
+    $('stExpSub').textContent = periodName ? `expenses in ${periodName}` : 'rent, bills, labour and other costs';
     $('stStock').textContent = rs(d.stockValue);
     $('stProfit').textContent = rs(d.totalProfit);
     $('stShare').textContent = rs(d.profitShare);
@@ -308,10 +322,14 @@ function renderChart(data, type) {
 async function populateChartMonths() {
   try {
     const months = await api('/api/chart?view=months');
-    const sel = $('chartMonth'); const v = sel.value;
-    sel.innerHTML = '<option value="">📅 Pick a month…</option>' +
+    const opts = '<option value="">📅 Pick a month…</option>' +
       months.slice().reverse().map(m => `<option value="${m.label}">${monthLabel(m.label)}</option>`).join('');
-    if ([...sel.options].some(o => o.value === v)) sel.value = v;
+    // fill both the chart's month picker and the dashboard period picker
+    for (const id of ['chartMonth', 'dashMonth']) {
+      const sel = $(id); const v = sel.value;
+      sel.innerHTML = opts;
+      if ([...sel.options].some(o => o.value === v)) sel.value = v;
+    }
   } catch { /* not fatal */ }
 }
 

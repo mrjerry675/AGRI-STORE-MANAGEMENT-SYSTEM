@@ -61,9 +61,14 @@
         <div>
           <h1>Dashboard <button class="icon-refresh" title="Refresh this page">🔄</button></h1>
           <p class="subtitle">Your shop's position at a glance</p>
-          <div class="filter-chips" id="dashPeriod" style="margin-top:12px;margin-bottom:0">
-            <button class="chip active" data-period="month">📅 This Month</button>
-            <button class="chip" data-period="all">🗓️ All Time</button>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px">
+            <div class="filter-chips" id="dashPeriod" style="margin-bottom:0">
+              <button class="chip active" data-period="month">📅 This Month</button>
+              <button class="chip" data-period="all">🗓️ All Time</button>
+            </div>
+            <select id="dashMonth" class="month-select">
+              <option value="">📅 Pick a month…</option>
+            </select>
           </div>
         </div>
         <div class="date-pill" id="todayPill"></div>

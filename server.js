@@ -1237,33 +1237,45 @@ app.get('/api/dashboard', async (req, res) => {
       .sort((a, b) => a.soldQty - b.soldQty || b.stockValue - a.stockValue).slice(0, 3)
       .map(p => ({ name: p.name, category: p.category, soldQty: p.soldQty, unit: p.unit, remaining: p.remaining, stockValue: p.stockValue }));
 
-    // ?period=month scopes the money-flow figures to the current month.
-    // Balances stay as of today either way: stock value, udhaar outstanding
-    // and supplier payable are what IS, not what happened in a period.
+    // ?period=month scopes the money-flow figures to the current month, and
+    // ?month=YYYY-MM to any specific month. Balances stay as of today either
+    // way: stock value, udhaar outstanding and supplier payable are what IS,
+    // not what happened in a period.
+    let range = null;
+    if (req.query.period === 'month' || /^\d{4}-\d{2}$/.test(String(req.query.month || ''))) {
+      const nw = new Date();
+      const [y, m] = req.query.month
+        ? String(req.query.month).split('-').map(Number)
+        : [nw.getFullYear(), nw.getMonth() + 1];
+      const start = `${y}-${String(m).padStart(2, '0')}-01`;
+      const end = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+      range = { start, end, label: `${y}-${String(m).padStart(2, '0')}` };
+    }
     let flow = { totalSales, totalPurchases, totalProfit, totalExpenses,
                  cashReceived: pay.cash, bankReceived: pay.bank };
-    if (req.query.period === 'month') {
+    if (range) {
       const m = await pool.query(`
         WITH ret AS (SELECT sale_id, SUM(qty) rqty FROM sale_returns GROUP BY sale_id)
         SELECT
           (SELECT COALESCE(SUM((s.qty - COALESCE(r.rqty, 0)) * s.sale_price), 0)
              FROM sales s LEFT JOIN ret r ON r.sale_id = s.id
-             WHERE s.sale_date >= date_trunc('month', CURRENT_DATE)) sales,
+             WHERE s.sale_date >= $1::date AND s.sale_date < $2::date) sales,
           (SELECT COALESCE(SUM((s.qty - COALESCE(r.rqty, 0)) * (s.sale_price - ${SALE_COST_SQL})), 0)
              FROM sales s LEFT JOIN ret r ON r.sale_id = s.id
-             WHERE s.sale_date >= date_trunc('month', CURRENT_DATE)) profit,
+             WHERE s.sale_date >= $1::date AND s.sale_date < $2::date) profit,
           (SELECT COALESCE(SUM(qty * unit_price + transport), 0) FROM purchases
-             WHERE purchase_date >= date_trunc('month', CURRENT_DATE)) purchases,
+             WHERE purchase_date >= $1::date AND purchase_date < $2::date) purchases,
           (SELECT COALESCE(SUM(amount), 0) FROM expenses
-             WHERE exp_date >= date_trunc('month', CURRENT_DATE)) expenses,
+             WHERE exp_date >= $1::date AND exp_date < $2::date) expenses,
           (SELECT COALESCE(SUM(CASE WHEN method = 'Cash' THEN amount ELSE 0 END), 0)
-             FROM sale_payments WHERE pay_date >= date_trunc('month', CURRENT_DATE)) cash_in,
+             FROM sale_payments WHERE pay_date >= $1::date AND pay_date < $2::date) cash_in,
           (SELECT COALESCE(SUM(CASE WHEN method <> 'Cash' THEN amount ELSE 0 END), 0)
-             FROM sale_payments WHERE pay_date >= date_trunc('month', CURRENT_DATE)) bank_in,
+             FROM sale_payments WHERE pay_date >= $1::date AND pay_date < $2::date) bank_in,
           (SELECT COALESCE(SUM(CASE WHEN method = 'Cash' THEN refund ELSE 0 END), 0)
-             FROM sale_returns WHERE return_date >= date_trunc('month', CURRENT_DATE)) cash_ref,
+             FROM sale_returns WHERE return_date >= $1::date AND return_date < $2::date) cash_ref,
           (SELECT COALESCE(SUM(CASE WHEN method <> 'Cash' THEN refund ELSE 0 END), 0)
-             FROM sale_returns WHERE return_date >= date_trunc('month', CURRENT_DATE)) bank_ref`);
+             FROM sale_returns WHERE return_date >= $1::date AND return_date < $2::date) bank_ref`,
+        [range.start, range.end]);
       const x = m.rows[0];
       flow = {
         totalSales: num(x.sales), totalPurchases: num(x.purchases),
@@ -1274,7 +1286,8 @@ app.get('/api/dashboard', async (req, res) => {
     }
 
     res.json({
-      period: req.query.period === 'month' ? 'month' : 'all',
+      period: range ? 'month' : 'all',
+      month: range ? range.label : null,
       stockValue, totalProfit: flow.totalProfit, profitShare: flow.totalProfit * 0.05,
       totalExpenses: flow.totalExpenses, netProfit: flow.totalProfit - flow.totalExpenses,
       bestSellers, slowMovers,
