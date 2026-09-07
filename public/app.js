@@ -1242,8 +1242,14 @@ $('sellProduct').addEventListener('change', () => {
   $('sellLooseBtn').style.display = (p && p.packSize > 0 && !editSaleId) ? '' : 'none';
   if (p && p.packSize > 0) $('sellLooseBtn').textContent = `⚖️ Sell Loose (${p.packUnit})`;
   $('looseHint').textContent = '';
-  // switching to an excluded-category product turns its card toggle off
-  if (p && !cardCatAllowed(p.category)) { $('sellCardTgl').classList.remove('on'); updSellTotal(); }
+  // re-sync the card toggle with the newly chosen product: excluded category
+  // switches it off; an allowed product for a CARDHOLDER switches it back on
+  // (so the order customer-first / product-second never loses the discount)
+  if (p && isAdmin()) {
+    if (!cardCatAllowed(p.category)) $('sellCardTgl').classList.remove('on');
+    else if (cardPct > 0 && cardFor($('custPhone').value)) $('sellCardTgl').classList.add('on');
+    updSellTotal();
+  }
 });
 
 // ---------- loose-quantity sales: sell part of a bag (e.g. 2 kg of a 50 kg bag)
@@ -1320,8 +1326,11 @@ $('extraItems').addEventListener('change', ev => {
       updSellTotal();
     }
     ev.target.closest('.field').querySelector('.xStock').innerHTML = stockHintHtml(p);
-    if (p && !cardCatAllowed(p.category)) {
-      ev.target.closest('.extra-item').querySelector('.xCardTgl').classList.remove('on');
+    // same re-sync as the main line: off for excluded, back on for a cardholder
+    if (p && isAdmin()) {
+      const tgl = ev.target.closest('.extra-item').querySelector('.xCardTgl');
+      if (!cardCatAllowed(p.category)) tgl.classList.remove('on');
+      else if (cardPct > 0 && cardFor($('custPhone').value)) tgl.classList.add('on');
       updSellTotal();
     }
   }
