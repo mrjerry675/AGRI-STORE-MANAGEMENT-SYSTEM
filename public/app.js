@@ -2465,8 +2465,9 @@ function renderPartnerDash() {
   const when = d.month ? monthLabel(d.month) : 'all time';
   $('pdashTotals').innerHTML =
     `<span class="tot">Profit (${esc(when)}): <b style="color:${d.totalProfitShare < 0 ? 'var(--red)' : 'var(--green)'}">${rs(d.totalProfitShare)}</b></span>` +
+    `<span class="tot">5% Donations: <b style="color:var(--gold)">${rs(d.totalDonations)}</b></span>` +
     `<span class="tot">Expenses: <b class="due">${rs(d.expenses)}</b></span>` +
-    `<span class="tot">Net: <b style="color:${d.totalNet < 0 ? 'var(--red)' : 'var(--green)'}">${rs(d.totalNet)}</b></span>` +
+    `<span class="tot">Final: <b style="color:${d.totalNet < 0 ? 'var(--red)' : 'var(--green)'}">${rs(d.totalNet)}</b></span>` +
     `<span class="tot">Total Capital: <b>${rs(d.totalCapital)}</b></span>`;
   $('pdashRows').innerHTML = d.partners.length ? d.partners.map(p => {
     const open = pdashExpanded === p.id;
@@ -2476,9 +2477,10 @@ function renderPartnerDash() {
       <td class="r">${rs(p.capital)}</td>
       <td class="r">${p.capitalSharePct.toFixed(1)}%</td>
       <td class="r ${p.profitShare < 0 ? 'red' : 'green'}">${rs(p.profitShare)}</td>
+      <td class="r" style="color:var(--gold)">${rs(p.donation)}</td>
       <td class="r red">${rs(p.expenseShare)}</td>
       <td class="r b ${p.net < 0 ? 'red' : 'green'}">${rs(p.net)}</td>
-    </tr>` + (open && p.items.length ? `<tr class="khata-detail"><td colspan="7">
+    </tr>` + (open && p.items.length ? `<tr class="khata-detail"><td colspan="8">
       <table class="khata-bills">
         <tr><th>Product</th><th class="r">Capital In It</th><th class="r">Share</th><th class="r">Profit (${esc(when)})</th></tr>
         ${p.items.map(it => `<tr>
@@ -2493,9 +2495,10 @@ function renderPartnerDash() {
       <td class="r">${rs(d.totalInvestedInPeriod)}</td>
       <td class="r">${rs(d.totalCapital)}</td><td class="r">100%</td>
       <td class="r">${rs(d.totalProfitShare)}</td>
+      <td class="r" style="color:var(--gold)">${rs(d.totalDonations)}</td>
       <td class="r red">${rs(d.expenses)}</td>
       <td class="r b ${d.totalNet < 0 ? 'red' : 'green'}">${rs(d.totalNet)}</td></tr>`
-    : '<tr><td colspan="7" class="empty-row">No active partners</td></tr>';
+    : '<tr><td colspan="8" class="empty-row">No active partners</td></tr>';
 }
 
 function togglePdash(id) {
@@ -2552,9 +2555,13 @@ async function loadPartners() {
           <div class="val" style="color:${p.totalProfit < 0 ? 'var(--red)' : 'var(--green)'}">${rs(p.totalProfit)}</div></div>
       </div>
       <div class="partner-stats">
+        <div class="partner-stat"><div class="lbl">5% Donations</div>
+          <div class="val" style="color:var(--gold)">${rs(p.donationShare)}</div></div>
         <div class="partner-stat"><div class="lbl">Expense Share (${(p.investShare * 100).toFixed(1)}%)</div>
           <div class="val" style="color:var(--red)">${rs(p.expenseShare)}</div></div>
-        <div class="partner-stat"><div class="lbl">Net Profit</div>
+      </div>
+      <div class="partner-stats" style="border-top:1px solid var(--line);padding-top:12px">
+        <div class="partner-stat"><div class="lbl">🏆 Final Profit (after donations &amp; expenses)</div>
           <div class="val" style="color:${p.netAfterExpenses < 0 ? 'var(--red)' : 'var(--green)'}">${rs(p.netAfterExpenses)}</div></div>
       </div>
       <button class="details-toggle" onclick="togglePartnerItems(${p.id}, this)">▾ Show Product Details</button>

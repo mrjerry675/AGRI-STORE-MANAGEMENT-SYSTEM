@@ -1744,14 +1744,17 @@ async function getPartnersData() {
       };
     });
 
-    // expenses are shared between partners in proportion to their investment
+    // expenses are shared between partners in proportion to their investment,
+    // and the 5% donations come off each partner's profit BEFORE the payout:
+    // final = profit - 5% of profit - expense share
     const expQ = await pool.query('SELECT COALESCE(SUM(amount), 0) t FROM expenses');
     const expensesTotal = num(expQ.rows[0].t);
     const totalInvestedAll = out.reduce((s, p) => s + p.totalInvested, 0);
     out.forEach(p => {
       p.investShare = totalInvestedAll > 0 ? p.totalInvested / totalInvestedAll : 0;
       p.expenseShare = p.investShare * expensesTotal;
-      p.netAfterExpenses = p.totalProfit - p.expenseShare;
+      p.donationShare = p.totalProfit * 0.05;
+      p.netAfterExpenses = p.totalProfit - p.donationShare - p.expenseShare;
     });
     return out;
 }
@@ -1838,7 +1841,9 @@ app.get('/api/partners/summary', async (req, res) => {
     out.forEach(p => {
       p.capitalSharePct = totalCapital > 0 ? (p.capital / totalCapital) * 100 : 0;
       p.expenseShare = totalCapital > 0 ? (p.capital / totalCapital) * periodExpenses : 0;
-      p.net = p.profitShare - p.expenseShare;
+      // the 5% donations come off the profit before the partner is paid
+      p.donation = p.profitShare * 0.05;
+      p.net = p.profitShare - p.donation - p.expenseShare;
     });
 
     res.json({
@@ -1848,6 +1853,7 @@ app.get('/api/partners/summary', async (req, res) => {
       totalCapital,
       totalInvestedInPeriod: out.reduce((s, p) => s + p.investedInPeriod, 0),
       totalProfitShare: out.reduce((s, p) => s + p.profitShare, 0),
+      totalDonations: out.reduce((s, p) => s + p.donation, 0),
       totalNet: out.reduce((s, p) => s + p.net, 0),
       partners: out
     });
