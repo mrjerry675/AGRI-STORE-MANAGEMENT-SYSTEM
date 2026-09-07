@@ -2465,7 +2465,7 @@ function renderPartnerDash() {
   const when = d.month ? monthLabel(d.month) : 'all time';
   $('pdashTotals').innerHTML =
     `<span class="tot">Profit (${esc(when)}): <b style="color:${d.totalProfitShare < 0 ? 'var(--red)' : 'var(--green)'}">${rs(d.totalProfitShare)}</b></span>` +
-    `<span class="tot">5% Donations: <b style="color:var(--gold)">${rs(d.totalDonations)}</b></span>` +
+    `<span class="tot">5% Donations (split equally): <b style="color:var(--gold)">${rs(d.totalDonations)}</b></span>` +
     `<span class="tot">Expenses: <b class="due">${rs(d.expenses)}</b></span>` +
     `<span class="tot">Final: <b style="color:${d.totalNet < 0 ? 'var(--red)' : 'var(--green)'}">${rs(d.totalNet)}</b></span>` +
     `<span class="tot">Total Capital: <b>${rs(d.totalCapital)}</b></span>`;
@@ -2555,7 +2555,7 @@ async function loadPartners() {
           <div class="val" style="color:${p.totalProfit < 0 ? 'var(--red)' : 'var(--green)'}">${rs(p.totalProfit)}</div></div>
       </div>
       <div class="partner-stats">
-        <div class="partner-stat"><div class="lbl">5% Donations</div>
+        <div class="partner-stat"><div class="lbl">Donation Share (equal split)</div>
           <div class="val" style="color:var(--gold)">${rs(p.donationShare)}</div></div>
         <div class="partner-stat"><div class="lbl">Expense Share (${(p.investShare * 100).toFixed(1)}%)</div>
           <div class="val" style="color:var(--red)">${rs(p.expenseShare)}</div></div>
