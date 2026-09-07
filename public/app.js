@@ -261,6 +261,8 @@ async function loadDashboard() {
     $('stExpenses').textContent = rs(d.totalExpenses);
     $('stNet').textContent = rs(d.netProfit);
     $('stNet').style.color = d.netProfit < 0 ? 'var(--red)' : '';
+    $('stFinal').textContent = rs(d.finalProfit);
+    $('stFinal').style.color = d.finalProfit < 0 ? 'var(--red)' : 'var(--gold)';
 
     const medals = ['🥇', '🥈', '🥉'];
     $('bestList').innerHTML = d.bestSellers.length ? d.bestSellers.map((p, i) => `<div class="rank-item">

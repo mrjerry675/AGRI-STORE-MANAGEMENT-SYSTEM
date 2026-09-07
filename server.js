@@ -1424,6 +1424,8 @@ app.get('/api/dashboard', async (req, res) => {
       month: range ? range.label : null,
       stockValue, totalProfit: flow.totalProfit, profitShare: flow.totalProfit * 0.05,
       totalExpenses: flow.totalExpenses, netProfit: flow.totalProfit - flow.totalExpenses,
+      // the take-home figure: profit minus expenses minus the 5% set aside
+      finalProfit: flow.totalProfit - flow.totalExpenses - flow.totalProfit * 0.05,
       bestSellers, slowMovers,
       todaySales: num(today.rows[0].amt), todayCount: parseInt(today.rows[0].n, 10),
       cashReceived: flow.cashReceived, bankReceived: flow.bankReceived,
