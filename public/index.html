@@ -355,7 +355,10 @@
             </div>
             <div class="field">
               <label>Sale Price per unit (Rs)</label>
-              <input type="number" id="sellPrice" min="0" step="any" placeholder="0.00">
+              <div style="display:flex;gap:8px;align-items:center">
+                <input type="number" id="sellPrice" min="0" step="any" placeholder="0.00" style="flex:1">
+                <button type="button" class="card-toggle" id="sellCardTgl" title="Kisan Card discount on this item — click to switch">💳</button>
+              </div>
               <div class="hint" id="looseHint"></div>
             </div>
           </div>

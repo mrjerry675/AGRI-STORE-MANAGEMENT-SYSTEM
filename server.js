@@ -565,9 +565,15 @@ app.post('/api/sales', async (req, res) => {
       return res.status(400).json({ error: `Only ${prod.remaining} ${prod.unit} in stock for ${prod.name}` });
     }
 
-    // Kisan Card holders (matched by phone) get their discount automatically
+    // Kisan Card discount: automatic for cardholders (matched by phone); the
+    // ADMIN may also switch it on/off per line manually — the salesman's
+    // form flags are ignored so he can't hand out discounts himself
     const card = await findKisanCard(phone);
-    const finalPrice = card ? cardPrice(sale_price) : num(sale_price);
+    const wantCard = isSalesman(req)
+      ? !!card
+      : (req.body.kisan_card === true ? true : req.body.kisan_card === false ? false : !!card);
+    const discounted = wantCard && KISAN_CARD_PCT > 0;
+    const finalPrice = discounted ? cardPrice(sale_price) : num(sale_price);
 
     const method = payment || 'Cash';
     const total = num(qty) * finalPrice;
@@ -589,9 +595,10 @@ app.post('/api/sales', async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `INSERT INTO sales (product_id, sale_date, qty, sale_price, payment, customer_name, phone, address, kisan_card)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [product_id, sale_date, qty, finalPrice, method, customer_name || '', phone || '', address || '', !!card]);
+      `INSERT INTO sales (product_id, sale_date, qty, sale_price, payment, customer_name, phone, address, kisan_card, orig_price)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [product_id, sale_date, qty, finalPrice, method, customer_name || '', phone || '', address || '',
+       discounted, discounted ? num(sale_price) : 0]);
     if (paid > 0) {
       await pool.query(
         'INSERT INTO sale_payments (sale_id, pay_date, amount, method) VALUES ($1, $2, $3, $4)',
@@ -599,11 +606,11 @@ app.post('/api/sales', async (req, res) => {
     }
     await logAction(req, 'created', 'sale',
       `Sale KD-${rows[0].id} saved: ${num(qty)} ${prod.unit} ${prod.name} @ ${fRs(finalPrice)}` +
-      (card ? ` (Kisan Card ${KISAN_CARD_PCT}% off, was ${fRs(sale_price)})` : '') +
+      (discounted ? ` (Kisan Card ${KISAN_CARD_PCT}% off, was ${fRs(sale_price)}${card ? '' : ' — applied manually'})` : '') +
       ` = ${fRs(total)}` +
       (customer_name ? ` to ${customer_name}` : '') +
       ` — received ${fRs(paid)} (${method})${paid < total ? `, due ${fRs(total - paid)}` : ''}`);
-    res.json({ ...rows[0], kisanCard: !!card });
+    res.json({ ...rows[0], kisanCard: discounted });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -909,9 +916,16 @@ app.post('/api/sales/multi', async (req, res) => {
       }
     }
 
-    // Kisan Card holders (matched by phone) get their discount on every line
+    // Kisan Card: automatic for cardholders; the admin's per-line flags can
+    // switch the discount on/off for individual lines (salesman flags ignored)
     const card = await findKisanCard(phone);
-    const priceOf = it => card ? cardPrice(it.sale_price) : num(it.sale_price);
+    const discOf = it => {
+      const want = isSalesman(req)
+        ? !!card
+        : (it.kisan_card === true ? true : it.kisan_card === false ? false : !!card);
+      return want && KISAN_CARD_PCT > 0;
+    };
+    const priceOf = it => discOf(it) ? cardPrice(it.sale_price) : num(it.sale_price);
 
     const method = payment || 'Cash';
     const total = items.reduce((s, it) => s + num(it.qty) * priceOf(it), 0);
@@ -939,10 +953,11 @@ app.post('/api/sales/multi', async (req, res) => {
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
         const { rows } = await c.query(
-          `INSERT INTO sales (product_id, sale_date, qty, sale_price, payment, customer_name, phone, address, receipt_group, kisan_card)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+          `INSERT INTO sales (product_id, sale_date, qty, sale_price, payment, customer_name, phone, address, receipt_group, kisan_card, orig_price)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
           [it.product_id, sale_date, it.qty, priceOf(it), method,
-           customer_name || '', phone || '', address || '', group || null, !!card]);
+           customer_name || '', phone || '', address || '', group || null,
+           discOf(it), discOf(it) ? num(it.sale_price) : 0]);
         if (i === 0) {
           group = rows[0].id;
           await c.query('UPDATE sales SET receipt_group = $1 WHERE id = $1', [group]);
@@ -965,10 +980,10 @@ app.post('/api/sales/multi', async (req, res) => {
     const itemList = items.map(it => `${num(it.qty)} x ${nameOf[it.product_id]}`).join(', ');
     await logAction(req, 'created', 'sale',
       `Sale KD-${group} saved (${items.length} items): ${itemList} = ${fRs(total)}` +
-      (card ? ` (Kisan Card ${KISAN_CARD_PCT}% off)` : '') +
+      (items.some(discOf) ? ` (Kisan Card ${KISAN_CARD_PCT}% off on ${items.filter(discOf).length} of ${items.length} lines${card ? '' : ' — applied manually'})` : '') +
       (customer_name ? ` to ${customer_name}` : '') +
       ` — received ${fRs(paid)} (${method})${paid < total ? `, due ${fRs(total - paid)}` : ''}`);
-    res.json({ ok: true, id: group, items: items.length, kisanCard: !!card });
+    res.json({ ok: true, id: group, items: items.length, kisanCard: items.some(discOf) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1826,7 +1841,7 @@ async function buildBackup() {
   const [products, purchases, sales, salePayments, purchasePayments, partners, investments, expenses, saleReturns, logs, replacements] = await Promise.all([
     pool.query('SELECT * FROM products ORDER BY id'),
     pool.query(`SELECT id, product_id, to_char(purchase_date, 'YYYY-MM-DD') AS purchase_date, qty, unit_price, transport, created_at FROM purchases ORDER BY id`),
-    pool.query(`SELECT id, product_id, to_char(sale_date, 'YYYY-MM-DD') AS sale_date, qty, sale_price, payment, customer_name, phone, address, receipt_group, replaced_note, kisan_card, created_at FROM sales ORDER BY id`),
+    pool.query(`SELECT id, product_id, to_char(sale_date, 'YYYY-MM-DD') AS sale_date, qty, sale_price, payment, customer_name, phone, address, receipt_group, replaced_note, kisan_card, orig_price, created_at FROM sales ORDER BY id`),
     pool.query(`SELECT id, sale_id, to_char(pay_date, 'YYYY-MM-DD') AS pay_date, amount, method, created_at FROM sale_payments ORDER BY id`),
     pool.query(`SELECT id, purchase_id, to_char(pay_date, 'YYYY-MM-DD') AS pay_date, amount, method, created_at FROM purchase_payments ORDER BY id`),
     pool.query(`SELECT id, name, active, to_char(left_date, 'YYYY-MM-DD') AS left_date, final_invested, final_profit, final_expense_share, final_net, created_at FROM partners ORDER BY id`),
@@ -1924,8 +1939,8 @@ async function restoreData(b) {
       ['id', 'name', 'active', 'left_date', 'final_invested', 'final_profit', 'final_expense_share', 'final_net', 'created_at'],
       { active: true, final_invested: 0, final_profit: 0, final_expense_share: 0, final_net: 0 });
     await ins('purchases', b.purchases, ['id', 'product_id', 'purchase_date', 'qty', 'unit_price', 'transport', 'created_at'], { transport: 0 });
-    await ins('sales', b.sales, ['id', 'product_id', 'sale_date', 'qty', 'sale_price', 'payment', 'customer_name', 'phone', 'address', 'receipt_group', 'replaced_note', 'kisan_card', 'created_at'],
-      { payment: 'Cash', customer_name: '', phone: '', address: '', replaced_note: '', kisan_card: false });
+    await ins('sales', b.sales, ['id', 'product_id', 'sale_date', 'qty', 'sale_price', 'payment', 'customer_name', 'phone', 'address', 'receipt_group', 'replaced_note', 'kisan_card', 'orig_price', 'created_at'],
+      { payment: 'Cash', customer_name: '', phone: '', address: '', replaced_note: '', kisan_card: false, orig_price: 0 });
     await ins('kisan_cards', b.kisan_cards, ['id', 'name', 'phone', 'created_at']);
     await ins('replacements', b.replacements, ['id', 'sale_id', 'new_sale_id', 'rep_date', 'qty', 'from_product', 'from_price', 'to_product', 'to_price', 'reason', 'created_at'],
       { from_product: '', from_price: 0, to_product: '', to_price: 0, reason: '' });

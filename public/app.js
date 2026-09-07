@@ -827,7 +827,8 @@ function renderSales() {
         ? `<br><span class="ret-note">🔁 ${esc(r.replaced_note)}</span>` : ''}</td>
       <td class="r">${qty(r.effQty)} ${esc(r.unit)}${looseNote(r.effQty, r.pack_size, r.pack_unit)}${r.returned > 0
         ? ` <span class="ret-note">↩ ${qty(r.returned)} ret.</span>` : ''}</td>
-      <td class="r">${rs(r.sale_price)}</td>
+      <td class="r">${r.kisan_card && parseFloat(r.orig_price) > 0
+        ? `<s class="share">${rs(r.orig_price)}</s> ` : ''}${rs(r.sale_price)}</td>
       <td class="r b">${rs(r.effTotal)}</td>
       <td class="r">${rs(r.paidNet)}</td>
       <td class="r">${r.remaining > 0.001
@@ -899,6 +900,7 @@ function fillCustomer(c) {
   $('custPhone').value = c.phone;
   if (c.address) $('custAddress').value = c.address;
   $('custPhoneHint').innerHTML = '<span class="paid-ok">✓ Repeat customer — details filled</span>' + cardNote(c.phone);
+  if (isAdmin() && cardPct > 0 && cardFor(c.phone)) setAllCardToggles(true);
   updSellTotal();
 }
 
@@ -907,6 +909,9 @@ function fillCustomer(c) {
 $('custPhone').addEventListener('input', () => {
   const d = phoneDigits($('custPhone').value);
   const hint = $('custPhoneHint');
+  // a cardholder's number switches every line's 💳 toggle on (admin can then
+  // switch individual lines off); it never auto-switches anything off
+  if (isAdmin() && cardPct > 0 && cardFor($('custPhone').value)) setAllCardToggles(true);
   updSellTotal();
   if (d.length < 7) { hint.textContent = ''; return; }
   const match = custDir.find(c => phoneDigits(c.phone) === d);
@@ -979,18 +984,45 @@ $('custPhone').addEventListener('input', () => {
   input.addEventListener('blur', () => setTimeout(close, 150));
 })();
 
+// is the card discount on for a line? admin: its 💳 toggle decides;
+// salesman: automatic whenever the phone belongs to a cardholder
+const lineCardOn = tgl => isAdmin()
+  ? (tgl && tgl.classList.contains('on'))
+  : !!cardFor($('custPhone').value);
+
 const updSellTotal = () => {
-  let total = (parseFloat($('sellQty').value) || 0) * (parseFloat($('sellPrice').value) || 0);
+  const factor = cardPct > 0 ? (100 - cardPct) / 100 : 1;
+  let orig = 0, final = 0;
+  const mainLine = (parseFloat($('sellQty').value) || 0) * (parseFloat($('sellPrice').value) || 0);
+  orig += mainLine;
+  final += lineCardOn($('sellCardTgl')) && !editSaleId ? mainLine * factor : mainLine;
   document.querySelectorAll('#extraItems .extra-item').forEach(row => {
-    total += (parseFloat(row.querySelector('.xQty').value) || 0) *
-             (parseFloat(row.querySelector('.xPrice').value) || 0);
+    const line = (parseFloat(row.querySelector('.xQty').value) || 0) *
+                 (parseFloat(row.querySelector('.xPrice').value) || 0);
+    orig += line;
+    final += lineCardOn(row.querySelector('.xCardTgl')) ? line * factor : line;
   });
-  // Kisan Card holder: preview the discount the server will apply
-  const card = !editSaleId && total > 0 && cardPct > 0 && cardFor($('custPhone').value);
-  $('sellTotal').innerHTML = card
-    ? `<s style="opacity:.55">${rs(total)}</s> ${rs(total * (100 - cardPct) / 100)} <span title="Kisan Card ${cardPct}% off">💳</span>`
-    : rs(total);
+  $('sellTotal').innerHTML = final < orig - 0.001
+    ? `<s style="opacity:.55">${rs(orig)}</s> ${rs(final)} <span title="Kisan Card ${cardPct}% off">💳</span>`
+    : rs(orig);
 };
+
+// the 💳 toggles: click to apply the card discount to that line only
+$('sellCardTgl').addEventListener('click', () => {
+  $('sellCardTgl').classList.toggle('on');
+  updSellTotal();
+});
+$('extraItems').addEventListener('click', ev => {
+  if (ev.target.classList && ev.target.classList.contains('xCardTgl')) {
+    ev.target.classList.toggle('on');
+    updSellTotal();
+  }
+});
+function setAllCardToggles(on) {
+  $('sellCardTgl').classList.toggle('on', on);
+  document.querySelectorAll('#extraItems .xCardTgl').forEach(t => t.classList.toggle('on', on));
+  updSellTotal();
+}
 $('sellQty').addEventListener('input', () => { updSellTotal(); $('looseHint').textContent = ''; });
 $('sellPrice').addEventListener('input', () => { updSellTotal(); $('looseHint').textContent = ''; });
 
@@ -1007,13 +1039,18 @@ function extraItemRow() {
     <div class="field"><label>Quantity</label>
       <input type="number" class="xQty" min="0" step="any" placeholder="0"></div>
     <div class="field"><label>Sale Price per unit (Rs)</label>
-      <input type="number" class="xPrice" min="0" step="any" placeholder="0.00"></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="number" class="xPrice" min="0" step="any" placeholder="0.00" style="flex:1">
+        <button type="button" class="card-toggle xCardTgl" title="Kisan Card discount on this item — click to switch" ${isAdmin() ? '' : 'style="display:none"'}>💳</button>
+      </div></div>
     <div class="field btn-field"><button type="button" class="btn-ghost xRemove">✖ Remove</button></div>`;
   return div;
 }
 $('addItemBtn').addEventListener('click', () => {
   const row = extraItemRow();
   $('extraItems').appendChild(row);
+  // a new line for a cardholder starts with its discount toggle on
+  if (isAdmin() && cardPct > 0 && cardFor($('custPhone').value)) row.querySelector('.xCardTgl').classList.add('on');
   attachProductSuggest(row.querySelector('.xSearch'), p => {
     const sel = row.querySelector('.xProduct');
     sel.value = p.id;
@@ -1040,12 +1077,18 @@ $('extraItems').addEventListener('input', ev => {
 });
 
 function gatherSaleItems() {
-  const items = [{ product_id: $('sellProduct').value, qty: $('sellQty').value, sale_price: $('sellPrice').value }];
+  // per-line card flags are the admin's choice; the salesman sends none, so
+  // the server falls back to automatic card matching for him
+  const items = [{
+    product_id: $('sellProduct').value, qty: $('sellQty').value, sale_price: $('sellPrice').value,
+    kisan_card: isAdmin() ? $('sellCardTgl').classList.contains('on') : undefined
+  }];
   document.querySelectorAll('#extraItems .extra-item').forEach(row => {
     items.push({
       product_id: row.querySelector('.xProduct').value,
       qty: row.querySelector('.xQty').value,
-      sale_price: row.querySelector('.xPrice').value
+      sale_price: row.querySelector('.xPrice').value,
+      kisan_card: isAdmin() ? row.querySelector('.xCardTgl').classList.contains('on') : undefined
     });
   });
   return items;
@@ -1336,6 +1379,7 @@ function editSale(id) {
   $('extraItems').innerHTML = '';
   $('addItemBtn').style.display = 'none';
   $('sellLooseBtn').style.display = 'none'; $('looseHint').textContent = '';
+  $('sellCardTgl').style.display = 'none'; // prices are locked in edit mode
   // only date and customer details are editable — item, price and payment are locked
   setLocked(['sellProduct', 'sellQty', 'sellPrice', 'sellPayment', 'sellBank'], true);
   $('sellPaidField').style.display = 'none'; // payments are edited with the 💰 button, not here
@@ -1358,6 +1402,8 @@ function resetSaleForm() {
   $('sellSaveBtn').textContent = '+ Save Sale';
   $('sellCancel').style.display = 'none';
   $('looseHint').textContent = '';
+  $('sellCardTgl').classList.remove('on');
+  $('sellCardTgl').style.display = isAdmin() ? '' : 'none';
   const selP = productCache.find(x => String(x.id) === $('sellProduct').value);
   $('sellLooseBtn').style.display = (selP && selP.packSize > 0) ? '' : 'none';
   updSellTotal();
@@ -1392,6 +1438,7 @@ $('saleForm').addEventListener('submit', async ev => {
       const saved = await post('/api/sales', {
         product_id: items[0].product_id, sale_date: $('sellDate').value,
         qty: items[0].qty, sale_price: items[0].sale_price,
+        kisan_card: items[0].kisan_card,
         payment: payMethod, paid_now: $('sellPaid').value,
         customer_name: $('custName').value, phone: $('custPhone').value, address: $('custAddress').value
       });
@@ -1637,15 +1684,23 @@ function printReceipt(id) {
 
   const itemRows = items.map(x => {
     const ret = parseFloat(x.returned) || 0;
+    // card lines print the original price struck through above the discounted one
+    const disc = x.kisan_card && parseFloat(x.orig_price) > 0;
     // loose sales print as the real-world amount (e.g. "2 kg loose"), not "0.04 bag"
     const ps = parseFloat(x.pack_size) || 0;
     const isLoose = ps > 0 && !Number.isInteger(parseFloat(x.qty));
+    const priceStr = disc
+      ? `<s style="color:#999">${rs(x.orig_price)}</s> ${rs(x.sale_price)}`
+      : rs(x.sale_price);
     const qtyLine = isLoose
-      ? `${qty(parseFloat(x.qty) * ps)} ${esc(x.pack_unit)} (loose)`
-      : `${qty(x.qty)} ${esc(x.unit)} × ${rs(x.sale_price)}`;
+      ? `${qty(parseFloat(x.qty) * ps)} ${esc(x.pack_unit)} (loose)${disc ? ' 💳' : ''}`
+      : `${qty(x.qty)} ${esc(x.unit)} × ${priceStr}`;
+    const totalCell = disc
+      ? `<s style="color:#999;font-size:12.5px">${rs(x.qty * x.orig_price)}</s><br>${rs(x.qty * x.sale_price)}`
+      : rs(x.qty * x.sale_price);
     return `<tr><td><b>${esc(x.name)}</b> <span style="font-size:12px;color:#444">(${esc(x.category)})</span><br>
         <span style="font-size:12.5px;color:#444">${qtyLine}</span></td>
-        <td class="r">${rs(x.qty * x.sale_price)}</td></tr>` +
+        <td class="r">${totalCell}</td></tr>` +
       (ret > 0 ? `<tr><td style="color:#b00020">↩ Returned ${qty(ret)} ${esc(x.unit)}</td>
         <td class="r" style="color:#b00020">− ${rs(ret * x.sale_price)}</td></tr>` : '') +
       (x.replaced_note ? `<tr><td colspan="2" style="font-size:12px;color:#444">🔁 ${esc(x.replaced_note)}</td></tr>` : '');
@@ -1681,8 +1736,12 @@ function printReceipt(id) {
     <hr>
     <table>
       ${itemRows}
-      ${items.some(x => x.kisan_card) ? `<tr><td colspan="2" style="color:#8a6d00;font-size:13px;padding-top:8px">
-        💳 Kisan Card discount applied</td></tr>` : ''}
+      ${(() => {
+        const saved = items.reduce((s, x) => s + (x.kisan_card && parseFloat(x.orig_price) > 0
+          ? parseFloat(x.qty) * (parseFloat(x.orig_price) - parseFloat(x.sale_price)) : 0), 0);
+        return saved > 0.001 ? `<tr><td colspan="2" style="color:#8a6d00;font-size:13px;padding-top:8px">
+        💳 Kisan Card discount — you saved ${rs(saved)}</td></tr>` : '';
+      })()}
       <tr class="tot"><td>Total${items.length > 1 ? ` (${items.length} items)` : ''}</td><td class="r">${rs(total)}</td></tr>
       <tr><td>Paid${refunded > 0 ? ` (after ${rs(refunded)} refund)` : ''}</td><td class="r">${rs(paidNet)}</td></tr>
       ${remaining > 0.001 ? `<tr><td class="due">Balance Due</td><td class="r due">${rs(remaining)}</td></tr>` : ''}
@@ -2628,7 +2687,7 @@ $('pwNew').addEventListener('keydown', ev => { if (ev.key === 'Enter') $('pwSave
       const b = document.querySelector(`.nav-btn[data-page="${p}"]`);
       if (b) b.style.display = 'none';
     });
-    ['backupBtn', 'importBtn', 'passwordBtn', 'returnsCard', 'waDealsBtn', 'cardPctBtn'].forEach(id => { $(id).style.display = 'none'; });
+    ['backupBtn', 'importBtn', 'passwordBtn', 'returnsCard', 'waDealsBtn', 'cardPctBtn', 'sellCardTgl'].forEach(id => { $(id).style.display = 'none'; });
     // salesman records for today only — dates are fixed
     $('sellDate').value = todayISO(); $('sellDate').disabled = true;
     $('buyDate').value = todayISO(); $('buyDate').disabled = true;

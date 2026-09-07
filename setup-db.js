@@ -184,6 +184,7 @@ async function main() {
     ALTER TABLE users     ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'admin';
     ALTER TABLE sales     ADD COLUMN IF NOT EXISTS replaced_note TEXT NOT NULL DEFAULT '';
     ALTER TABLE sales     ADD COLUMN IF NOT EXISTS kisan_card BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE sales     ADD COLUMN IF NOT EXISTS orig_price NUMERIC NOT NULL DEFAULT 0;
   `);
   console.log('Database schema is up to date.');
 

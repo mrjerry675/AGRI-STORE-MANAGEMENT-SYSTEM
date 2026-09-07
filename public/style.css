@@ -716,6 +716,26 @@ tr.editing td { background: rgba(251, 191, 36, .07); }
   .dash-lower { grid-template-columns: 1fr; }
 }
 
+/* ---------- per-line Kisan Card discount toggle on the sale form ---------- */
+.card-toggle {
+  background: none;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 10px;
+  font-size: 16px;
+  padding: 7px 11px;
+  cursor: pointer;
+  filter: grayscale(1);
+  opacity: .5;
+  transition: all .15s;
+}
+.card-toggle:hover { opacity: .8; }
+.card-toggle.on {
+  border: 1.5px solid var(--gold);
+  background: rgba(251, 191, 36, .14);
+  filter: none;
+  opacity: 1;
+}
+
 /* ---------- customer khata ---------- */
 tr.khata-row { cursor: pointer; }
 tr.khata-row:hover td { background: rgba(167, 139, 250, .06); }
