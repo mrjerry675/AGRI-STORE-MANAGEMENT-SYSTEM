@@ -511,9 +511,11 @@ function renderProducts() {
     rows = rows.filter(p =>
       p.name.toLowerCase().includes(productSearchTerm) ||
       (p.description || '').toLowerCase().includes(productSearchTerm) ||
-      p.category.toLowerCase().includes(productSearchTerm));
+      p.category.toLowerCase().includes(productSearchTerm) ||
+      String(p.serial) === productSearchTerm.replace('#', ''));
   }
   $('productRows').innerHTML = rows.length ? rows.map(p => `<tr>
+      <td class="r" style="color:var(--muted);font-weight:700">#${p.serial}</td>
       <td class="b">${esc(p.name)}</td>
       <td>${badge(p.category)}</td>
       <td>${esc(p.description)}</td>
@@ -523,7 +525,7 @@ function renderProducts() {
       <td class="r">${rs(p.avgCost)}</td>
       <td class="r ${p.salePrice > 0 && p.salePrice < p.avgCost ? 'red' : 'b'}">${p.salePrice > 0 ? rs(p.salePrice) : '—'}</td>
       <td><button class="edit-btn" onclick="editProduct(${p.id})" title="Edit">✏️</button><button class="del-btn" onclick="delProduct(${p.id}, '${jsq(p.name)}')">🗑️</button></td>
-    </tr>`).join('') : `<tr><td colspan="9" class="empty-row">${productSearchTerm
+    </tr>`).join('') : `<tr><td colspan="10" class="empty-row">${productSearchTerm
       ? 'No product matching "' + esc(productSearchTerm) + '"'
       : productFilter
         ? 'No ' + esc(productFilter.toLowerCase()) + ' products yet'
@@ -592,7 +594,7 @@ let productCache = [];
 async function loadProductOptions() {
   try {
     productCache = await api('/api/products');
-    const opts = productCache.map(p => `<option value="${p.id}">${esc(p.name)} (${esc(p.category)})</option>`).join('');
+    const opts = productCache.map(p => `<option value="${p.id}">#${p.serial} ${esc(p.name)} (${esc(p.category)})</option>`).join('');
     const keep = (sel, first) => {
       const v = sel.value;
       sel.innerHTML = first + opts;
@@ -1181,7 +1183,7 @@ function extraItemRow() {
     <div class="field"><label>Product</label>
       <input type="text" class="product-search xSearch" placeholder="🔍 Type to search…" autocomplete="off">
       <select class="xProduct"><option value="">— choose product —</option>${productCache.map(p =>
-        `<option value="${p.id}">${esc(p.name)} (${esc(p.category)})</option>`).join('')}</select>
+        `<option value="${p.id}">#${p.serial} ${esc(p.name)} (${esc(p.category)})</option>`).join('')}</select>
       <div class="hint xStock"></div></div>
     <div class="field"><label>Quantity</label>
       <input type="number" class="xQty" min="0" step="any" placeholder="0"></div>
@@ -1246,8 +1248,16 @@ $('sellPayment').addEventListener('change', () => {
   $('bankField').style.display = $('sellPayment').value === 'Bank' ? '' : 'none';
 });
 
-// type-to-search: matches a product by name and selects it in the dropdown
+// type-to-search: matches a product by serial number ("#12" or "12") or by
+// name, and selects it in the dropdown
+const serialQuery = t => {
+  const q = String(t || '').trim().replace(/^#/, '');
+  return /^\d+$/.test(q) ? q : null;
+};
+
 function findProductByText(t) {
+  const sq2 = serialQuery(t);
+  if (sq2) return productCache.find(p => String(p.serial) === sq2) || null;
   const q = String(t || '').trim().toLowerCase();
   if (!q) return null;
   const exact = productCache.find(p => p.name.toLowerCase() === q);
@@ -1259,6 +1269,11 @@ function findProductByText(t) {
 }
 
 function bestProductMatch(t) {
+  const sq2 = serialQuery(t);
+  if (sq2) {
+    return productCache.find(p => String(p.serial) === sq2) ||
+           productCache.find(p => String(p.serial).startsWith(sq2)) || null;
+  }
   const q = String(t || '').trim().toLowerCase();
   if (!q) return null;
   return productCache.find(p => p.name.toLowerCase() === q) ||
@@ -1281,7 +1296,7 @@ function attachProductSuggest(input, onPick) {
     if (!items.length) { close(); return; }
     box.innerHTML = items.map((p, i) => `
       <div class="suggest-item${i === hi ? ' hi' : ''}" data-i="${i}">
-        <span class="s-name">${esc(p.name)}</span>
+        <span class="s-name"><span style="color:var(--muted)">#${p.serial}</span> ${esc(p.name)}</span>
         <span class="s-meta">${badge(p.category)}<span class="s-stock${p.remaining <= 0 ? ' out' : ''}">${qty(p.remaining)} ${esc(p.unit)}</span></span>
       </div>`).join('');
     box.style.top = (input.offsetTop + input.offsetHeight + 4) + 'px';
@@ -1289,10 +1304,14 @@ function attachProductSuggest(input, onPick) {
   };
   const update = () => {
     const q = input.value.trim().toLowerCase();
+    const sq2 = serialQuery(q);
     const starts = [], contains = [];
     productCache.forEach(p => {
       const n = p.name.toLowerCase();
-      if (!q || n.startsWith(q)) starts.push(p);
+      if (sq2) { // digits = serial number search
+        if (String(p.serial) === sq2) starts.push(p);
+        else if (String(p.serial).startsWith(sq2)) contains.push(p);
+      } else if (!q || n.startsWith(q)) starts.push(p);
       else if (n.includes(q)) contains.push(p);
     });
     items = starts.concat(contains).slice(0, 8);
@@ -1669,7 +1688,7 @@ function openReplace(id) {
     `✅ Eligible — replacements accepted until <b>${esc(lastDayStr)}</b> (${RETURN_DAYS}-day policy).<br>` +
     `<span class="share">No refunds: the replacement must be of equal or higher value.</span>`;
   $('repProduct').innerHTML = productCache.map(p =>
-    `<option value="${p.id}" ${p.id === r.product_id ? 'selected' : ''}>${esc(p.name)} (${esc(p.category)}) — ${qty(p.remaining)} ${esc(p.unit)} in stock</option>`).join('');
+    `<option value="${p.id}" ${p.id === r.product_id ? 'selected' : ''}>#${p.serial} ${esc(p.name)} (${esc(p.category)}) — ${qty(p.remaining)} ${esc(p.unit)} in stock</option>`).join('');
   $('repQty').value = '';
   $('repPrice').value = r.sale_price;
   $('repDate').value = todayISO();

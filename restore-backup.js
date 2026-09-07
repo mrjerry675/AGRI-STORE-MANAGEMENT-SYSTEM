@@ -44,7 +44,17 @@ async function main() {
       }
     };
 
-    await ins('products', b.products, ['id', 'name', 'category', 'unit', 'description', 'sale_price', 'pack_size', 'pack_unit', 'created_at'], { sale_price: 0, pack_size: 0, pack_unit: '' });
+    await ins('products', b.products, ['id', 'name', 'category', 'unit', 'description', 'sale_price', 'pack_size', 'pack_unit', 'serial', 'created_at'], { sale_price: 0, pack_size: 0, pack_unit: '' });
+    // legacy backups have no serials — number those products by creation order
+    await c.query(`
+      UPDATE products p SET serial = sub.rn + COALESCE((SELECT MAX(serial) FROM products WHERE serial IS NOT NULL), 0)
+      FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY id) rn FROM products WHERE serial IS NULL) sub
+      WHERE p.id = sub.id`);
+    await c.query(`
+      INSERT INTO settings (key, value)
+      VALUES ('last_serial', (SELECT COALESCE(MAX(serial), 0)::text FROM products))
+      ON CONFLICT (key) DO UPDATE SET value = GREATEST(settings.value::int,
+        (SELECT COALESCE(MAX(serial), 0) FROM products))::text`);
     await ins('partners', b.partners,
       ['id', 'name', 'active', 'left_date', 'final_invested', 'final_profit', 'final_expense_share', 'final_net', 'created_at'],
       { active: true, final_invested: 0, final_profit: 0, final_expense_share: 0, final_net: 0 });

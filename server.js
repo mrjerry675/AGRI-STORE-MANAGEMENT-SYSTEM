@@ -242,7 +242,7 @@ const SALE_COST_SQL = `
 // Per-product aggregates: purchased qty/amount, sold qty/amount, current cost, remaining, stock value, profit
 async function productStats() {
   const [prodQ, puQ, sQ, pretQ, cost] = await Promise.all([
-    pool.query('SELECT id, name, category, unit, description, sale_price, pack_size, pack_unit FROM products ORDER BY name'),
+    pool.query('SELECT id, serial, name, category, unit, description, sale_price, pack_size, pack_unit FROM products ORDER BY name'),
     pool.query('SELECT product_id, qty, unit_price, transport FROM purchases'),
     pool.query(`
       SELECT s.product_id, to_char(s.sale_date, 'YYYY-MM-DD') AS d, s.qty, s.sale_price,
@@ -258,7 +258,7 @@ async function productStats() {
   const agg = {};
   prodQ.rows.forEach(p => {
     agg[p.id] = {
-      id: p.id, name: p.name, category: p.category, unit: p.unit, description: p.description,
+      id: p.id, serial: p.serial, name: p.name, category: p.category, unit: p.unit, description: p.description,
       salePrice: num(p.sale_price),
       packSize: num(p.pack_size), packUnit: p.pack_unit || '',
       purchasedQty: 0, purchasedAmt: 0, soldQty: 0, soldAmt: 0, profit: 0
@@ -296,7 +296,7 @@ app.get('/api/products', async (req, res) => {
     if (isSalesman(req)) {
       // cost figures are the shop's margin secret — salesmen get stock and sale info only
       return res.json(stats.map(p => ({
-        id: p.id, name: p.name, category: p.category, unit: p.unit, description: p.description,
+        id: p.id, serial: p.serial, name: p.name, category: p.category, unit: p.unit, description: p.description,
         salePrice: p.salePrice, remaining: p.remaining,
         packSize: p.packSize, packUnit: p.packUnit, // needed for loose sales, not a cost secret
         purchasedQty: p.purchasedQty, soldQty: p.soldQty,
@@ -318,11 +318,17 @@ app.post('/api/products', async (req, res) => {
     if (dup.rowCount) {
       return res.status(400).json({ error: `A product named "${dup.rows[0].name}" already exists — edit it instead of adding it again` });
     }
+    // permanent serial number from a counter that only ever goes up —
+    // a deleted product's number is never given to anyone else
+    await pool.query(`INSERT INTO settings (key, value) VALUES ('last_serial', '0') ON CONFLICT (key) DO NOTHING`);
+    const nx = await pool.query(
+      `UPDATE settings SET value = (value::int + 1)::text WHERE key = 'last_serial' RETURNING value`);
+    const serial = parseInt(nx.rows[0].value, 10);
     const { rows } = await pool.query(
-      'INSERT INTO products (name, category, unit, description, sale_price, pack_size, pack_unit) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      'INSERT INTO products (name, category, unit, description, sale_price, pack_size, pack_unit, serial) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
       [name.trim(), category || 'Fertilizer', unit || 'bag', description || '', sale_price || 0,
-       pack_size || 0, num(pack_size) > 0 ? (pack_unit || 'kg') : '']);
-    await logAction(req, 'created', 'product', `Product added: ${rows[0].name} (${rows[0].category}, per ${rows[0].unit})` +
+       pack_size || 0, num(pack_size) > 0 ? (pack_unit || 'kg') : '', serial]);
+    await logAction(req, 'created', 'product', `Product #${rows[0].serial} added: ${rows[0].name} (${rows[0].category}, per ${rows[0].unit})` +
       (num(sale_price) > 0 ? ` — fixed price ${fRs(sale_price)}` : ''));
     res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -2256,7 +2262,17 @@ async function restoreData(b) {
         await c.query(`SELECT setval(pg_get_serial_sequence('${table}','id'), (SELECT MAX(id) FROM ${table}))`);
       }
     };
-    await ins('products', b.products, ['id', 'name', 'category', 'unit', 'description', 'sale_price', 'pack_size', 'pack_unit', 'created_at'], { sale_price: 0, pack_size: 0, pack_unit: '' });
+    await ins('products', b.products, ['id', 'name', 'category', 'unit', 'description', 'sale_price', 'pack_size', 'pack_unit', 'serial', 'created_at'], { sale_price: 0, pack_size: 0, pack_unit: '' });
+    // legacy backups have no serials — number those products by creation order
+    await c.query(`
+      UPDATE products p SET serial = sub.rn + COALESCE((SELECT MAX(serial) FROM products WHERE serial IS NOT NULL), 0)
+      FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY id) rn FROM products WHERE serial IS NULL) sub
+      WHERE p.id = sub.id`);
+    await c.query(`
+      INSERT INTO settings (key, value)
+      VALUES ('last_serial', (SELECT COALESCE(MAX(serial), 0)::text FROM products))
+      ON CONFLICT (key) DO UPDATE SET value = GREATEST(settings.value::int,
+        (SELECT COALESCE(MAX(serial), 0) FROM products))::text`);
     await ins('partners', b.partners,
       ['id', 'name', 'active', 'left_date', 'final_invested', 'final_profit', 'final_expense_share', 'final_net', 'created_at'],
       { active: true, final_invested: 0, final_profit: 0, final_expense_share: 0, final_net: 0 });
