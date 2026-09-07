@@ -46,9 +46,10 @@ app.use('/api', (req, res, next) => {
   res.status(401).json({ error: 'Not logged in' });
 });
 
-// Role wall: a salesman can only record daily business — sales, purchases,
-// payments and replacements. Everything else (deletes, edits, refunds, money
-// overviews, partners, expenses, logs, backups, staff) is admin-only.
+// Role wall: a salesman can only record daily business — sales, customer
+// payments and replacements. Everything else (purchases, deletes, edits,
+// refunds, money overviews, partners, expenses, logs, backups, staff) is
+// admin-only.
 const SALESMAN_ALLOW = [
   ['GET', /^\/products$/],
   ['GET', /^\/myday$/],
@@ -57,8 +58,7 @@ const SALESMAN_ALLOW = [
   ['GET', /^\/khata$/], ['POST', /^\/khata\/pay$/],
   ['GET', /^\/settings\/wa_deals$/], ['GET', /^\/settings\/card_pct$/], ['GET', /^\/settings\/card_excluded$/],
   ['GET', /^\/cards$/],
-  ['GET', /^\/replacements$/],
-  ['GET', /^\/purchases$/], ['POST', /^\/purchases$/], ['POST', /^\/purchases\/\d+\/payments$/]
+  ['GET', /^\/replacements$/]
 ];
 app.use('/api', (req, res, next) => {
   if ((req.session.user.role || 'admin') !== 'salesman') return next();

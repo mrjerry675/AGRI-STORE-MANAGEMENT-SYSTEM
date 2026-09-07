@@ -2778,8 +2778,8 @@ $('pwNew').addEventListener('keydown', ev => { if (ev.key === 'Enter') $('pwSave
     return;
   }
   if (!isAdmin()) {
-    // salesman sees only Sales and Purchases
-    ['dashboard', 'products', 'register', 'partners', 'expenses', 'logs'].forEach(p => {
+    // salesman sees only Sales and Person Profiles (purchases are admin-only)
+    ['dashboard', 'products', 'stockin', 'register', 'partners', 'expenses', 'logs'].forEach(p => {
       const b = document.querySelector(`.nav-btn[data-page="${p}"]`);
       if (b) b.style.display = 'none';
     });
