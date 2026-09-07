@@ -329,6 +329,19 @@
           </table>
         </div>
       </div>
+
+      <div class="card">
+        <h2 class="card-title">↩ Returned to Suppliers</h2>
+        <p class="subtitle" style="margin-bottom:14px">Unsold goods sent back — your debt shrinks first, over-payments come back as refunds</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Date</th><th>Purchase</th><th>Product</th><th class="r">Qty</th><th class="r">Value</th><th class="r">Refund to Us</th><th>Via</th><th>Reason</th><th></th></tr>
+            </thead>
+            <tbody id="purRetRows"></tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
     <!-- ===== SALES ===== -->
@@ -989,6 +1002,40 @@
     <div class="modal-actions">
       <button class="btn-primary" id="refSave">↩ Save Refund</button>
       <button class="btn-ghost" id="refCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="purRetModal">
+  <div class="modal">
+    <h2 class="card-title">↩ Return to Supplier</h2>
+    <p class="pay-info" id="purRetInfo"></p>
+    <div class="field">
+      <label>Quantity Going Back</label>
+      <input type="number" id="purRetQty" min="0" step="any" placeholder="0">
+      <div class="hint" id="purRetHint"></div>
+    </div>
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="purRetDate">
+    </div>
+    <div class="field">
+      <label>Refund Received Via (if any)</label>
+      <select id="purRetMethod">
+        <option>Cash</option>
+        <option>JazzCash / Easypaisa</option>
+        <option>Bank Alfalah</option>
+        <option>Bank of Punjab</option>
+        <option>Meezan Bank</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Reason (optional)</label>
+      <input type="text" id="purRetReason" placeholder="e.g. season over — unsold stock back">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-primary" id="purRetSave">↩ Return to Supplier</button>
+      <button class="btn-ghost" id="purRetCancel">Cancel</button>
     </div>
   </div>
 </div>

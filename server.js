@@ -89,6 +89,7 @@ app.get('/api/myday', async (req, res) => {
         (SELECT COALESCE(SUM(refund), 0) FROM sale_returns WHERE return_date = CURRENT_DATE AND method = 'Cash') refunds_cash_out,
         (SELECT COUNT(*) FROM sale_returns WHERE return_date = CURRENT_DATE) returns_count,
         (SELECT COALESCE(SUM(amount), 0) FROM purchase_payments WHERE pay_date = CURRENT_DATE AND method = 'Cash') supplier_cash_out,
+        (SELECT COALESCE(SUM(refund), 0) FROM purchase_returns WHERE return_date = CURRENT_DATE AND method = 'Cash') supplier_refund_in,
         (SELECT COUNT(*) FROM purchases WHERE purchase_date = CURRENT_DATE) purchases_count,
         (SELECT COALESCE(SUM(qty * unit_price + transport), 0) FROM purchases WHERE purchase_date = CURRENT_DATE) purchases_total`);
     const r = q.rows[0];
@@ -98,10 +99,12 @@ app.get('/api/myday', async (req, res) => {
       refundsOut: num(r.refunds_out), refundsCashOut: num(r.refunds_cash_out),
       returnsCount: parseInt(r.returns_count, 10),
       supplierCashOut: num(r.supplier_cash_out),
+      supplierRefundIn: num(r.supplier_refund_in),
       purchasesCount: parseInt(r.purchases_count, 10), purchasesTotal: num(r.purchases_total),
       // only refunds handed back as physical cash leave the drawer —
-      // bank/wallet refunds are netted in the bank figures instead
-      netCash: num(r.cash_in) - num(r.refunds_cash_out) - num(r.supplier_cash_out)
+      // bank/wallet refunds are netted in the bank figures instead;
+      // cash a supplier hands back for returned goods comes INTO the drawer
+      netCash: num(r.cash_in) - num(r.refunds_cash_out) - num(r.supplier_cash_out) + num(r.supplier_refund_in)
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -238,7 +241,7 @@ const SALE_COST_SQL = `
 
 // Per-product aggregates: purchased qty/amount, sold qty/amount, current cost, remaining, stock value, profit
 async function productStats() {
-  const [prodQ, puQ, sQ, cost] = await Promise.all([
+  const [prodQ, puQ, sQ, pretQ, cost] = await Promise.all([
     pool.query('SELECT id, name, category, unit, description, sale_price, pack_size, pack_unit FROM products ORDER BY name'),
     pool.query('SELECT product_id, qty, unit_price, transport FROM purchases'),
     pool.query(`
@@ -246,6 +249,10 @@ async function productStats() {
              COALESCE(r.rqty, 0) AS ret
       FROM sales s
       LEFT JOIN (SELECT sale_id, SUM(qty) rqty FROM sale_returns GROUP BY sale_id) r ON r.sale_id = s.id`),
+    pool.query(`
+      SELECT pu.product_id, pu.unit_price, SUM(pr.qty) rq
+      FROM purchase_returns pr JOIN purchases pu ON pu.id = pr.purchase_id
+      GROUP BY pu.product_id, pu.unit_price`),
     buildCostIndex()
   ]);
   const agg = {};
@@ -261,6 +268,12 @@ async function productStats() {
     const a = agg[r.product_id]; if (!a) return;
     a.purchasedQty += num(r.qty);
     a.purchasedAmt += num(r.qty) * num(r.unit_price) + num(r.transport);
+  });
+  // goods returned to suppliers leave stock and the books at their own price
+  pretQ.rows.forEach(r => {
+    const a = agg[r.product_id]; if (!a) return;
+    a.purchasedQty -= num(r.rq);
+    a.purchasedAmt -= num(r.rq) * num(r.unit_price);
   });
   sQ.rows.forEach(s => {
     const a = agg[s.product_id]; if (!a) return;
@@ -376,21 +389,30 @@ app.get('/api/purchases', async (req, res) => {
     const { rows } = await pool.query(`
       SELECT pu.*, to_char(pu.purchase_date, 'YYYY-MM-DD') AS purchase_date,
              p.name, p.category, p.unit,
-             COALESCE(pp.paid, 0) AS paid
+             COALESCE(pp.paid, 0) AS paid,
+             COALESCE(pr.rqty, 0) AS returned,
+             COALESCE(pr.refunded, 0) AS refunded
       FROM purchases pu
       JOIN products p ON p.id = pu.product_id
       LEFT JOIN (SELECT purchase_id, SUM(amount) paid FROM purchase_payments GROUP BY purchase_id) pp
         ON pp.purchase_id = pu.id
+      LEFT JOIN (SELECT purchase_id, SUM(qty) rqty, SUM(refund) refunded FROM purchase_returns GROUP BY purchase_id) pr
+        ON pr.purchase_id = pu.id
       ORDER BY pu.purchase_date DESC, pu.id DESC`);
     if (isSalesman(req)) {
       // no cost browsing for salesmen: quantities and dates only
       return res.json(rows.map(r => ({
         id: r.id, product_id: r.product_id, purchase_date: r.purchase_date,
-        name: r.name, category: r.category, unit: r.unit, qty: r.qty,
+        name: r.name, category: r.category, unit: r.unit, qty: r.qty, returned: r.returned,
         unit_price: 0, transport: 0, paid: 0, remaining: 0
       })));
     }
-    res.json(rows.map(r => ({ ...r, remaining: num(r.qty) * num(r.unit_price) + num(r.transport) - num(r.paid) })));
+    res.json(rows.map(r => {
+      const effQty = num(r.qty) - num(r.returned);
+      const effTotal = effQty * num(r.unit_price) + num(r.transport);
+      const paidNet = num(r.paid) - num(r.refunded);
+      return { ...r, effQty, effTotal, paidNet, remaining: effTotal - paidNet };
+    }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -441,7 +463,10 @@ app.post('/api/purchases/:id/payments', async (req, res) => {
       return res.status(400).json({ error: 'Salesman accounts can only record payments for today' });
     }
     const { rows } = await pool.query(`
-      SELECT pu.qty * pu.unit_price + pu.transport AS total, COALESCE(SUM(pp.amount), 0) AS paid
+      SELECT (pu.qty - COALESCE((SELECT SUM(qty) FROM purchase_returns WHERE purchase_id = pu.id), 0))
+               * pu.unit_price + pu.transport AS total,
+             COALESCE(SUM(pp.amount), 0)
+               - COALESCE((SELECT SUM(refund) FROM purchase_returns WHERE purchase_id = pu.id), 0) AS paid
       FROM purchases pu LEFT JOIN purchase_payments pp ON pp.purchase_id = pu.id
       WHERE pu.id = $1 GROUP BY pu.id`, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Purchase not found' });
@@ -455,6 +480,89 @@ app.post('/api/purchases/:id/payments', async (req, res) => {
     await logAction(req, 'payment', 'purchase',
       `Supplier paid ${fRs(amount)} (${method || 'Cash'}) on purchase #${req.params.id} — ${fRs(remaining - num(amount))} still due`);
     res.json({ ok: true, remaining: remaining - num(amount) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------- Returns TO the supplier (sale-or-return stock) ----------
+// Unsold goods go back: the bags leave stock and the money follows the same
+// rule as customer refunds, in our favour — first the debt to the supplier
+// shrinks, and only what we had over-paid comes back to us as a refund.
+app.post('/api/purchases/:id/returns', async (req, res) => {
+  try {
+    const { qty, return_date, method, reason } = req.body;
+    if (num(qty) <= 0) return res.status(400).json({ error: 'Return quantity must be more than 0' });
+    if (!return_date) return res.status(400).json({ error: 'Return date is required' });
+
+    const q = await pool.query(`
+      SELECT pu.qty, pu.unit_price, pu.transport, pu.product_id,
+             to_char(pu.purchase_date, 'YYYY-MM-DD') AS purchase_date,
+             p.name AS pname, p.unit,
+             COALESCE((SELECT SUM(amount) FROM purchase_payments WHERE purchase_id = pu.id), 0) AS paid,
+             COALESCE((SELECT SUM(qty) FROM purchase_returns WHERE purchase_id = pu.id), 0) AS returned,
+             COALESCE((SELECT SUM(refund) FROM purchase_returns WHERE purchase_id = pu.id), 0) AS refunded
+      FROM purchases pu JOIN products p ON p.id = pu.product_id WHERE pu.id = $1`, [req.params.id]);
+    if (!q.rows.length) return res.status(404).json({ error: 'Purchase not found' });
+    const f = q.rows[0];
+    if (return_date < f.purchase_date) return res.status(400).json({ error: 'Return date cannot be before the purchase date' });
+
+    const effQty = num(f.qty) - num(f.returned);
+    if (num(qty) > effQty + 0.001) {
+      return res.status(400).json({ error: `Only ${effQty} ${f.unit} of this purchase can still be returned` });
+    }
+    // the bags must physically be on the shelf — sold goods can't go back
+    const stats = await productStats();
+    const prod = stats.find(p => p.id === f.product_id);
+    if (!prod || num(qty) > prod.remaining + 0.001) {
+      return res.status(400).json({ error: `Only ${prod ? prod.remaining : 0} ${f.unit} in stock — sold goods cannot be returned to the supplier` });
+    }
+
+    const newTotal = (effQty - num(qty)) * num(f.unit_price) + num(f.transport);
+    const paidNet = num(f.paid) - num(f.refunded);
+    const refund = Math.max(0, paidNet - newTotal); // what the supplier owes US back
+    const via = REFUND_METHODS.includes(method) ? method : 'Cash';
+
+    const { rows } = await pool.query(
+      `INSERT INTO purchase_returns (purchase_id, return_date, qty, refund, method, reason)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [req.params.id, return_date, qty, refund, via, String(reason || '').trim()]);
+    await logAction(req, 'return', 'purchase',
+      `Returned to supplier: ${num(qty)} ${f.unit} ${f.pname} from purchase #${req.params.id}` +
+      (refund > 0.001
+        ? ` — supplier gave back ${fRs(refund)} (${via})`
+        : ` — our debt reduced by ${fRs(num(qty) * num(f.unit_price))}`) +
+      (reason ? ` — ${String(reason).trim()}` : ''));
+    res.json({ ...rows[0], refundToUs: refund });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/purchase-returns', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT r.id, r.purchase_id, to_char(r.return_date, 'YYYY-MM-DD') AS return_date,
+             r.qty, r.refund, r.method, r.reason,
+             pu.unit_price, p.name AS product_name, p.category, p.unit
+      FROM purchase_returns r
+      JOIN purchases pu ON pu.id = r.purchase_id
+      JOIN products p ON p.id = pu.product_id
+      ORDER BY r.return_date DESC, r.id DESC`);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/purchase-returns/:id', async (req, res) => {
+  try {
+    const info = await pool.query(`
+      SELECT r.purchase_id, r.qty, r.refund, p.name, p.unit
+      FROM purchase_returns r JOIN purchases pu ON pu.id = r.purchase_id JOIN products p ON p.id = pu.product_id
+      WHERE r.id = $1`, [req.params.id]);
+    await pool.query('DELETE FROM purchase_returns WHERE id = $1', [req.params.id]);
+    if (info.rows.length) {
+      const i = info.rows[0];
+      await logAction(req, 'deleted', 'purchase',
+        `Supplier return UNDONE on purchase #${i.purchase_id}: ${num(i.qty)} ${i.unit} ${i.name} back in our stock` +
+        (num(i.refund) > 0.001 ? ` (${fRs(i.refund)} refund cancelled)` : ''));
+    }
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1224,7 +1332,10 @@ app.get('/api/dashboard', async (req, res) => {
         UNION ALL
         SELECT method, -refund FROM sale_returns WHERE refund > 0
       ) t`);
-    const purchasePaid = await pool.query('SELECT COALESCE(SUM(amount), 0) paid FROM purchase_payments');
+    // supplier refunds count as money back, so payable = net total - net paid
+    const purchasePaid = await pool.query(`
+      SELECT (SELECT COALESCE(SUM(amount), 0) FROM purchase_payments)
+           - (SELECT COALESCE(SUM(refund), 0) FROM purchase_returns) AS paid`);
     const pay = {
       cash: num(received.rows[0].cash),
       bank: num(received.rows[0].bank),
@@ -1278,7 +1389,10 @@ app.get('/api/dashboard', async (req, res) => {
              FROM sales s LEFT JOIN ret r ON r.sale_id = s.id
              WHERE s.sale_date >= $1::date AND s.sale_date < $2::date) profit,
           (SELECT COALESCE(SUM(qty * unit_price + transport), 0) FROM purchases
-             WHERE purchase_date >= $1::date AND purchase_date < $2::date) purchases,
+             WHERE purchase_date >= $1::date AND purchase_date < $2::date)
+          - (SELECT COALESCE(SUM(pr.qty * pu.unit_price), 0)
+             FROM purchase_returns pr JOIN purchases pu ON pu.id = pr.purchase_id
+             WHERE pu.purchase_date >= $1::date AND pu.purchase_date < $2::date) purchases,
           (SELECT COALESCE(SUM(amount), 0) FROM expenses
              WHERE exp_date >= $1::date AND exp_date < $2::date) expenses,
           (SELECT COALESCE(SUM(CASE WHEN method = 'Cash' THEN amount ELSE 0 END), 0)
@@ -1373,7 +1487,10 @@ app.get('/api/analytics', async (req, res) => {
           (SELECT COALESCE(SUM((s.qty - COALESCE(r.rqty, 0)) * (s.sale_price - ${SALE_COST_SQL})), 0)
              FROM sales s LEFT JOIN ret r ON r.sale_id = s.id WHERE s.sale_date = days.d) AS profit,
           (SELECT COALESCE(SUM(pu.qty * pu.unit_price + pu.transport), 0)
-             FROM purchases pu WHERE pu.purchase_date = days.d) AS purchases,
+             FROM purchases pu WHERE pu.purchase_date = days.d)
+          - (SELECT COALESCE(SUM(pr.qty * pu.unit_price), 0)
+             FROM purchase_returns pr JOIN purchases pu ON pu.id = pr.purchase_id
+             WHERE pu.purchase_date = days.d) AS purchases,
           (SELECT COALESCE(SUM(e.amount), 0) FROM expenses e WHERE e.exp_date = days.d) AS expenses
         FROM days ORDER BY days.d`, [from, to]);
       return res.json(rows.map(r => ({
@@ -1402,7 +1519,10 @@ app.get('/api/analytics', async (req, res) => {
            FROM sales s LEFT JOIN ret r ON r.sale_id = s.id
            WHERE date_trunc('month', s.sale_date) = months.m) AS profit,
         (SELECT COALESCE(SUM(pu.qty * pu.unit_price + pu.transport), 0)
-           FROM purchases pu WHERE date_trunc('month', pu.purchase_date) = months.m) AS purchases,
+           FROM purchases pu WHERE date_trunc('month', pu.purchase_date) = months.m)
+        - (SELECT COALESCE(SUM(pr.qty * pu.unit_price), 0)
+           FROM purchase_returns pr JOIN purchases pu ON pu.id = pr.purchase_id
+           WHERE date_trunc('month', pu.purchase_date) = months.m) AS purchases,
         (SELECT COALESCE(SUM(e.amount), 0)
            FROM expenses e WHERE date_trunc('month', e.exp_date) = months.m) AS expenses
       FROM months ORDER BY months.m`);
@@ -1422,8 +1542,11 @@ app.get('/api/register', async (req, res) => {
     const purchases = await pool.query(`
       SELECT pu.id, pu.product_id, to_char(pu.purchase_date, 'YYYY-MM-DD') AS date,
              pu.qty, pu.unit_price, pu.transport, pu.created_at,
-             p.name AS product_name, p.category, p.unit, p.description
-      FROM purchases pu JOIN products p ON p.id = pu.product_id`);
+             p.name AS product_name, p.category, p.unit, p.description,
+             COALESCE(pr.rqty, 0) AS returned
+      FROM purchases pu JOIN products p ON p.id = pu.product_id
+      LEFT JOIN (SELECT purchase_id, SUM(qty) rqty FROM purchase_returns GROUP BY purchase_id) pr
+        ON pr.purchase_id = pu.id`);
     const sales = await pool.query(`
       SELECT s.id, s.product_id, to_char(s.sale_date, 'YYYY-MM-DD') AS date,
              s.qty, s.sale_price, s.payment,
@@ -1469,9 +1592,11 @@ app.get('/api/register', async (req, res) => {
 
       const cost = costIndex.costAt(pid, e.date); // the rate in force on this entry's date
       if (e.kind === 'purchase') {
-        purchasedSoFar[pid] += num(e.qty);
-        row.pDate = e.date; row.pQty = num(e.qty); row.pUnitPrice = num(e.unit_price);
-        row.pTotal = num(e.qty) * num(e.unit_price) + num(e.transport); // total includes transport
+        const pEff = num(e.qty) - num(e.returned); // goods sent back to the supplier are out
+        purchasedSoFar[pid] += pEff;
+        row.pDate = e.date; row.pQty = pEff; row.pUnitPrice = num(e.unit_price);
+        row.pReturned = num(e.returned);
+        row.pTotal = pEff * num(e.unit_price) + num(e.transport); // total includes transport
       } else {
         const effQty = num(e.qty) - num(e.returned);
         soldSoFar[pid] += effQty;
@@ -1951,13 +2076,17 @@ async function buildBackup() {
   ]);
   const kisanCards = await pool.query('SELECT * FROM kisan_cards ORDER BY id').catch(() => ({ rows: [] }));
   const settings = await pool.query('SELECT * FROM settings ORDER BY key').catch(() => ({ rows: [] }));
+  const purchaseReturns = await pool.query(
+    `SELECT id, purchase_id, to_char(return_date, 'YYYY-MM-DD') AS return_date, qty, refund, method, reason, created_at
+     FROM purchase_returns ORDER BY id`).catch(() => ({ rows: [] }));
   return {
     exportedAt: new Date().toISOString(),
     products: products.rows, purchases: purchases.rows, sales: sales.rows,
     sale_payments: salePayments.rows, purchase_payments: purchasePayments.rows,
     partners: partners.rows, investments: investments.rows, expenses: expenses.rows,
     sale_returns: saleReturns.rows, logs: logs.rows, replacements: replacements.rows,
-    kisan_cards: kisanCards.rows, settings: settings.rows
+    kisan_cards: kisanCards.rows, settings: settings.rows,
+    purchase_returns: purchaseReturns.rows
   };
 }
 
@@ -2008,6 +2137,7 @@ async function restoreData(b) {
     await c.query(`TRUNCATE products, purchases, sales, sale_payments, purchase_payments,
                    partners, investments, expenses, sale_returns, replacements RESTART IDENTITY CASCADE`);
     await c.query('TRUNCATE kisan_cards RESTART IDENTITY').catch(() => {});
+    await c.query('TRUNCATE purchase_returns RESTART IDENTITY').catch(() => {});
     await c.query('TRUNCATE settings').catch(() => {});
     // legacy backups saved dates as UTC instants written by a Pakistan (UTC+5) machine;
     // normalise every date to plain YYYY-MM-DD so nothing shifts on any timezone
@@ -2052,6 +2182,7 @@ async function restoreData(b) {
     await ins('sale_payments', b.sale_payments, ['id', 'sale_id', 'pay_date', 'amount', 'method', 'created_at'], { method: 'Cash' });
     await ins('sale_returns', b.sale_returns, ['id', 'sale_id', 'return_date', 'qty', 'refund', 'method', 'reason', 'created_at'], { refund: 0, method: 'Cash', reason: '' });
     await ins('purchase_payments', b.purchase_payments, ['id', 'purchase_id', 'pay_date', 'amount', 'method', 'created_at'], { method: 'Cash' });
+    await ins('purchase_returns', b.purchase_returns, ['id', 'purchase_id', 'return_date', 'qty', 'refund', 'method', 'reason', 'created_at'], { refund: 0, method: 'Cash', reason: '' });
     await ins('investments', b.investments, ['id', 'partner_id', 'product_id', 'inv_date', 'amount', 'created_at']);
     await ins('expenses', b.expenses, ['id', 'exp_date', 'category', 'description', 'amount', 'created_at'], { category: 'Other', description: '' });
     await c.query('COMMIT');

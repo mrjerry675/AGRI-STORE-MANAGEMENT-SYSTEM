@@ -64,6 +64,8 @@ async function main() {
     await ins('sale_payments', b.sale_payments, ['id', 'sale_id', 'pay_date', 'amount', 'method', 'created_at'], { method: 'Cash' });
     await ins('sale_returns', b.sale_returns, ['id', 'sale_id', 'return_date', 'qty', 'refund', 'method', 'reason', 'created_at'], { refund: 0, method: 'Cash', reason: '' });
     await ins('purchase_payments', b.purchase_payments, ['id', 'purchase_id', 'pay_date', 'amount', 'method', 'created_at'], { method: 'Cash' });
+    await c.query('TRUNCATE purchase_returns RESTART IDENTITY').catch(() => {});
+    await ins('purchase_returns', b.purchase_returns, ['id', 'purchase_id', 'return_date', 'qty', 'refund', 'method', 'reason', 'created_at'], { refund: 0, method: 'Cash', reason: '' });
     await ins('investments', b.investments, ['id', 'partner_id', 'product_id', 'inv_date', 'amount', 'created_at']);
     await ins('expenses', b.expenses, ['id', 'exp_date', 'category', 'description', 'amount', 'created_at'], { category: 'Other', description: '' });
 

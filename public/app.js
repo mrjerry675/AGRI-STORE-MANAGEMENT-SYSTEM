@@ -167,7 +167,7 @@ setInterval(() => {
 function refresh(page) {
   if (page === 'dashboard') loadDashboard();
   if (page === 'products') loadProducts();
-  if (page === 'stockin') { loadProductOptions(); loadPurchases(); }
+  if (page === 'stockin') { loadProductOptions(); loadPurchases(); if (isAdmin()) loadPurchaseReturns(); }
   if (page === 'sales') { loadProductOptions(); loadSales(); loadReplacements(); loadMyDay(); loadWaDeals(); loadCards(); if (isAdmin()) loadReturns(); }
   if (page === 'khata') { loadCards().then(loadKhata); }
   if (page === 'register') { loadProductOptions(); loadRegister(); }
@@ -700,16 +700,17 @@ function renderPurchases() {
   $('purchaseRows').innerHTML = rows.length ? rows.map(r => `<tr>
       <td>${fmtDate(r.purchase_date)}</td>
       <td class="b">${esc(r.name)} ${badge(r.category)}</td>
-      <td class="r">${qty(r.qty)} ${esc(r.unit)}</td>
+      <td class="r">${qty(r.effQty !== undefined ? r.effQty : r.qty)} ${esc(r.unit)}${r.returned > 0
+        ? ` <span class="ret-note">↩ ${qty(r.returned)} ret.</span>` : ''}</td>
       <td class="r">${rs(r.unit_price)}</td>
       <td class="r">${rs(r.transport)}</td>
-      <td class="r b">${rs(r.qty * r.unit_price + parseFloat(r.transport || 0))}</td>
-      <td class="r">${rs(r.paid)}</td>
+      <td class="r b">${rs(r.effTotal !== undefined ? r.effTotal : r.qty * r.unit_price + parseFloat(r.transport || 0))}</td>
+      <td class="r">${rs(r.paidNet !== undefined ? r.paidNet : r.paid)}</td>
       <td class="r">${r.remaining > 0.001
         ? `<span class="due">${rs(r.remaining)}</span>
            <button class="pay-btn" onclick="openPay('purchases', ${r.id}, '${jsq(r.name)}', ${r.remaining})">💰 Pay</button>`
         : '<span class="paid-ok">✓ Paid</span>'}</td>
-      <td>${isAdmin() && deletable(r.created_at) ? `<button class="del-btn" onclick="delPurchase(${r.id})">🗑️</button>` : ''}</td>
+      <td>${isAdmin() && (r.effQty === undefined || r.effQty > 0.001) ? `<button class="ret-btn" onclick="openPurRet(${r.id})" title="Return goods to the supplier">↩</button>` : ''}${isAdmin() && deletable(r.created_at) ? `<button class="del-btn" onclick="delPurchase(${r.id})">🗑️</button>` : ''}</td>
     </tr>`).join('') : `<tr><td colspan="9" class="empty-row">${purchaseSearchTerm
       ? 'No purchases matching "' + esc(purchaseSearchTerm) + '"'
       : purchaseCatFilter
@@ -746,6 +747,99 @@ $('purchaseForm').addEventListener('submit', async ev => {
     refreshCurrentPage();
   } catch (e) { toast(e.message, true); }
 });
+
+// ---------- returns TO the supplier (sale-or-return stock) ----------
+let purRetTarget = null;
+
+function openPurRet(id) {
+  const r = purchaseCache.find(x => x.id === id);
+  if (!r) return;
+  purRetTarget = r;
+  const effQty = parseFloat(r.effQty !== undefined ? r.effQty : r.qty);
+  const prod = productCache.find(p => p.id === r.product_id);
+  const inStock = prod ? prod.remaining : 0;
+  $('purRetInfo').innerHTML =
+    `<b>${esc(r.name)}</b> — purchase #${r.id} of ${fmtDate(r.purchase_date)}: ` +
+    `${qty(effQty)} ${esc(r.unit)} still on this purchase @ ${rs(r.unit_price)}.<br>` +
+    `<span class="share">In stock: ${qty(inStock)} ${esc(r.unit)} — sold goods cannot be returned. ` +
+    `Money follows automatically: your debt shrinks first, anything over-paid comes back to you.</span>`;
+  $('purRetQty').value = '';
+  $('purRetDate').value = todayISO();
+  $('purRetMethod').value = 'Cash';
+  $('purRetReason').value = '';
+  $('purRetHint').textContent = '';
+  $('purRetModal').classList.add('show');
+  $('purRetQty').focus();
+}
+
+function updatePurRetHint() {
+  const r = purRetTarget;
+  if (!r) return;
+  const q = parseFloat($('purRetQty').value) || 0;
+  if (!q) { $('purRetHint').textContent = ''; return; }
+  const effQty = parseFloat(r.effQty !== undefined ? r.effQty : r.qty);
+  const prod = productCache.find(p => p.id === r.product_id);
+  if (q > effQty + 0.001) {
+    $('purRetHint').innerHTML = `<span class="due">✖ Only ${qty(effQty)} ${esc(r.unit)} left on this purchase</span>`;
+    return;
+  }
+  if (prod && q > prod.remaining + 0.001) {
+    $('purRetHint').innerHTML = `<span class="due">✖ Only ${qty(prod.remaining)} ${esc(r.unit)} in stock — the rest are sold</span>`;
+    return;
+  }
+  const newTotal = (effQty - q) * parseFloat(r.unit_price) + (parseFloat(r.transport) || 0);
+  const paidNet = parseFloat(r.paidNet !== undefined ? r.paidNet : r.paid) || 0;
+  const refund = Math.max(0, paidNet - newTotal);
+  $('purRetHint').innerHTML = refund > 0.001
+    ? `${qty(q)} ${esc(r.unit)} back to the supplier — <b class="paid-ok">they return you ${rs(refund)}</b>`
+    : `${qty(q)} ${esc(r.unit)} back — <b>your debt reduces by ${rs(q * r.unit_price)}</b>, nothing changes hands`;
+}
+$('purRetQty').addEventListener('input', updatePurRetHint);
+
+function closePurRet() { $('purRetModal').classList.remove('show'); purRetTarget = null; }
+$('purRetCancel').addEventListener('click', closePurRet);
+$('purRetModal').addEventListener('click', ev => { if (ev.target === $('purRetModal')) closePurRet(); });
+
+$('purRetSave').addEventListener('click', async () => {
+  if (!purRetTarget) return;
+  if (!checkPos($('purRetQty').value, 'Return quantity')) return;
+  if (!checkNotFuture($('purRetDate').value, 'Return date')) return;
+  try {
+    const r = await post(`/api/purchases/${purRetTarget.id}/returns`, {
+      qty: $('purRetQty').value, return_date: $('purRetDate').value,
+      method: $('purRetMethod').value, reason: $('purRetReason').value.trim()
+    });
+    toast(r.refundToUs > 0.001
+      ? `Returned ✔ — supplier gives back ${rs(r.refundToUs)}`
+      : 'Returned ✔ — your debt to the supplier reduced');
+    closePurRet();
+    refreshCurrentPage();
+  } catch (e) { toast(e.message, true); }
+});
+
+async function loadPurchaseReturns() {
+  try {
+    const rows = await api('/api/purchase-returns');
+    $('purRetRows').innerHTML = rows.length ? rows.map(r => `<tr>
+      <td>${fmtDate(r.return_date)}</td>
+      <td class="b">#${r.purchase_id}</td>
+      <td>${esc(r.product_name)} ${badge(r.category)}</td>
+      <td class="r b">${qty(r.qty)} ${esc(r.unit)}</td>
+      <td class="r">${rs(r.qty * r.unit_price)}</td>
+      <td class="r">${parseFloat(r.refund) > 0.001 ? `<span class="paid-ok">${rs(r.refund)}</span>` : '—'}</td>
+      <td>${parseFloat(r.refund) > 0.001 ? payLabel(r.method) : ''}</td>
+      <td>${esc(r.reason)}</td>
+      <td><button class="del-btn" onclick="undoPurRet(${r.id})" title="Undo this return">🗑️</button></td>
+    </tr>`).join('') : '<tr><td colspan="9" class="empty-row">Nothing returned to suppliers yet</td></tr>';
+  } catch (e) { toast(e.message, true); }
+}
+
+async function undoPurRet(id) {
+  if (!(await uiConfirm('Undo Supplier Return?',
+    'The goods will count as in your stock again and any refund from the supplier is cancelled in the books.<br>Only do this if the entry was a mistake.'))) return;
+  try { await api('/api/purchase-returns/' + id, { method: 'DELETE' }); toast('Return undone'); refreshCurrentPage(); }
+  catch (e) { toast(e.message, true); }
+}
 
 async function delPurchase(id) {
   if (!(await uiConfirm('Delete Purchase?', 'This purchase entry and its payment records will be removed.'))) return;
@@ -1383,6 +1477,7 @@ async function loadMyDay() {
       `<span class="tot">Bank in: <b>${rs(d.bankIn)}</b></span>` +
       (d.refundsOut > 0 ? `<span class="tot">Refunds out: <b class="due">${rs(d.refundsOut)}</b></span>` : '') +
       (d.supplierCashOut > 0 ? `<span class="tot">Supplier cash out: <b class="due">${rs(d.supplierCashOut)}</b></span>` : '') +
+      (d.supplierRefundIn > 0 ? `<span class="tot">Supplier refunds in: <b class="paid-ok">${rs(d.supplierRefundIn)}</b></span>` : '') +
       `<span class="tot">Net cash in drawer: <b>${rs(d.netCash)}</b></span>`;
   } catch (e) { $('mydayStats').textContent = ''; }
 }
@@ -1415,6 +1510,7 @@ $('dayCloseBtn').addEventListener('click', () => {
       <tr><td>Bank / wallet received</td><td class="r">${rs(d.bankIn)}</td></tr>
       <tr><td>Cash paid to suppliers</td><td class="r">− ${rs(d.supplierCashOut)}</td></tr>
       ${d.refundsCashOut > 0.001 ? `<tr><td>Refunds paid out in cash (exceptions)</td><td class="r">− ${rs(d.refundsCashOut)}</td></tr>` : ''}
+      ${d.supplierRefundIn > 0.001 ? `<tr><td>Cash back from suppliers (returns)</td><td class="r">+ ${rs(d.supplierRefundIn)}</td></tr>` : ''}
       ${d.purchasesCount > 0 ? `<tr><td>Purchases recorded (${d.purchasesCount})</td><td class="r">${rs(d.purchasesTotal)}</td></tr>` : ''}
       <tr class="net"><td>NET CASH TO HAND OVER</td><td class="r">${rs(d.netCash)}</td></tr>
     </table>

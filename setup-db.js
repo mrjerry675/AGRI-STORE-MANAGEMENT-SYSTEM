@@ -106,6 +106,17 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS purchase_returns (
+  id SERIAL PRIMARY KEY,
+  purchase_id INTEGER NOT NULL REFERENCES purchases(id) ON DELETE CASCADE,
+  return_date DATE NOT NULL,
+  qty NUMERIC NOT NULL CHECK (qty > 0),
+  refund NUMERIC NOT NULL DEFAULT 0 CHECK (refund >= 0),
+  method TEXT NOT NULL DEFAULT 'Cash',
+  reason TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS kisan_cards (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
