@@ -2008,6 +2008,7 @@ async function restoreData(b) {
     await c.query(`TRUNCATE products, purchases, sales, sale_payments, purchase_payments,
                    partners, investments, expenses, sale_returns, replacements RESTART IDENTITY CASCADE`);
     await c.query('TRUNCATE kisan_cards RESTART IDENTITY').catch(() => {});
+    await c.query('TRUNCATE settings').catch(() => {});
     // legacy backups saved dates as UTC instants written by a Pakistan (UTC+5) machine;
     // normalise every date to plain YYYY-MM-DD so nothing shifts on any timezone
     const DATE_COLS = new Set(['purchase_date', 'sale_date', 'pay_date', 'return_date', 'inv_date', 'exp_date', 'rep_date', 'left_date']);
@@ -2040,6 +2041,12 @@ async function restoreData(b) {
     await ins('sales', b.sales, ['id', 'product_id', 'sale_date', 'qty', 'sale_price', 'payment', 'customer_name', 'phone', 'address', 'receipt_group', 'replaced_note', 'kisan_card', 'orig_price', 'created_at'],
       { payment: 'Cash', customer_name: '', phone: '', address: '', replaced_note: '', kisan_card: false, orig_price: 0 });
     await ins('kisan_cards', b.kisan_cards, ['id', 'name', 'phone', 'created_at']);
+    // settings has no id column, so it can't go through ins()
+    for (const s of b.settings || []) {
+      await c.query(
+        `INSERT INTO settings (key, value) VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET value = $2`, [s.key, s.value]);
+    }
     await ins('replacements', b.replacements, ['id', 'sale_id', 'new_sale_id', 'rep_date', 'qty', 'from_product', 'from_price', 'to_product', 'to_price', 'reason', 'created_at'],
       { from_product: '', from_price: 0, to_product: '', to_price: 0, reason: '' });
     await ins('sale_payments', b.sale_payments, ['id', 'sale_id', 'pay_date', 'amount', 'method', 'created_at'], { method: 'Cash' });
@@ -2064,6 +2071,19 @@ app.post('/api/restore', async (req, res) => {
     fs.writeFileSync(path.join(BACKUP_DIR, safetyFile), JSON.stringify(await buildBackup(), null, 2));
 
     await restoreData(b);
+    // the restore may have replaced the settings — refresh the cached ones
+    // (defaults first, in case the backup predates these settings)
+    try {
+      KISAN_CARD_PCT = 10;
+      KISAN_CARD_EXCLUDED = new Set();
+      const sr = await pool.query(`SELECT key, value FROM settings WHERE key IN ('card_pct', 'card_excluded')`);
+      for (const row of sr.rows) {
+        if (row.key === 'card_pct' && num(row.value) >= 0 && num(row.value) <= 90) KISAN_CARD_PCT = num(row.value);
+        if (row.key === 'card_excluded') {
+          KISAN_CARD_EXCLUDED = new Set(row.value.split(',').map(s => s.trim()).filter(c => CARD_CATEGORIES.includes(c)));
+        }
+      }
+    } catch { /* keep old cache */ }
     await logAction(req, 'restore', 'backup',
       `All shop data REPLACED by an imported backup (${b.products.length} products, ${b.purchases.length} purchases, ` +
       `${b.sales.length} sales, ${(b.expenses || []).length} expenses). Previous data saved in backups\\${safetyFile}`);

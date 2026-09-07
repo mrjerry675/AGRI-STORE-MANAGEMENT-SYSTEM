@@ -52,6 +52,13 @@ async function main() {
     await ins('sales', b.sales, ['id', 'product_id', 'sale_date', 'qty', 'sale_price', 'payment', 'customer_name', 'phone', 'address', 'receipt_group', 'replaced_note', 'kisan_card', 'orig_price', 'created_at'],
       { payment: 'Cash', customer_name: '', phone: '', address: '', replaced_note: '', kisan_card: false, orig_price: 0 });
     await ins('kisan_cards', b.kisan_cards, ['id', 'name', 'phone', 'created_at']);
+    // settings has no id column, so it can't go through ins()
+    await c.query('TRUNCATE settings').catch(() => {});
+    for (const s of b.settings || []) {
+      await c.query(
+        `INSERT INTO settings (key, value) VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET value = $2`, [s.key, s.value]);
+    }
     await ins('replacements', b.replacements, ['id', 'sale_id', 'new_sale_id', 'rep_date', 'qty', 'from_product', 'from_price', 'to_product', 'to_price', 'reason', 'created_at'],
       { from_product: '', from_price: 0, to_product: '', to_price: 0, reason: '' });
     await ins('sale_payments', b.sale_payments, ['id', 'sale_id', 'pay_date', 'amount', 'method', 'created_at'], { method: 'Cash' });
