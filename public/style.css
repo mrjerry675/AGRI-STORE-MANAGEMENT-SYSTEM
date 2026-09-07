@@ -770,6 +770,162 @@ tr.rgrp td { background: rgba(167, 139, 250, .045); }
   cursor: help;
 }
 
+/* ============================================================
+   PREMIUM POLISH LAYER — visual refinement only. Same theme,
+   same layout, same logic. Screen-only so printing is untouched;
+   the global prefers-reduced-motion rule disables all of it.
+   ============================================================ */
+@media screen {
+
+  /* ---- typography refinement ---- */
+  h1 {
+    background: linear-gradient(92deg, #ffffff 35%, #cabffb 90%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .stat-value { letter-spacing: -.6px; }
+  body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+  /* ---- one springy transition family for every control ---- */
+  .btn-primary, .btn-outline, .btn-ghost, .backup-btn, .chip, .pay-btn, .ret-btn,
+  .edit-btn, .del-btn, .print-btn, .edit-name-btn, .details-toggle, .card-toggle,
+  .icon-refresh, .add-round-btn, .month-select {
+    transition: transform .18s cubic-bezier(.34, 1.56, .64, 1),
+                box-shadow .22s ease, background-color .18s ease,
+                border-color .18s ease, color .18s ease,
+                opacity .18s ease, filter .18s ease;
+  }
+
+  /* buttons lift on hover, press down on click */
+  .btn-primary:hover { transform: translateY(-2px) scale(1.02); }
+  .btn-outline:hover, .backup-btn:hover {
+    transform: translateY(-1.5px);
+    box-shadow: 0 8px 22px rgba(124, 58, 237, .28);
+  }
+  .btn-ghost:hover { transform: translateY(-1px); }
+  .chip:hover { transform: translateY(-1.5px); box-shadow: 0 6px 16px rgba(124, 58, 237, .22); }
+  .pay-btn:hover, .ret-btn:hover, .edit-name-btn:hover { transform: translateY(-1.5px); }
+  .pay-btn:hover { box-shadow: 0 5px 14px rgba(251, 191, 36, .22); }
+  .ret-btn:hover { box-shadow: 0 5px 14px rgba(96, 165, 250, .22); }
+  .edit-btn:hover, .del-btn:hover, .print-btn:hover, .card-toggle:hover { transform: scale(1.15); }
+  .btn-primary:active, .btn-outline:active, .btn-ghost:active, .backup-btn:active,
+  .chip:active, .pay-btn:active, .ret-btn:active, .edit-name-btn:active,
+  .details-toggle:active, .add-round-btn:active {
+    transform: translateY(0) scale(.97);
+    transition-duration: .06s;
+  }
+  .icon-refresh:hover {
+    transform: rotate(25deg) scale(1.08);
+    box-shadow: 0 0 16px rgba(124, 58, 237, .35);
+  }
+  .add-round-btn:hover { transform: scale(1.1) rotate(90deg); }
+
+  /* ---- sidebar: slide-in hover, calmer active ---- */
+  .nav-btn {
+    transition: background .18s ease, color .18s ease, transform .2s cubic-bezier(.34, 1.4, .64, 1),
+                border-color .2s ease, box-shadow .25s ease;
+  }
+  .nav-btn:hover { transform: translateX(5px); }
+  .nav-btn.active { transform: none; }
+  .nav-btn.active:hover { transform: translateX(2px); }
+  .brand-crest { transition: filter .3s ease, transform .3s ease; }
+  .brand:hover .brand-crest {
+    filter: drop-shadow(0 0 20px rgba(251, 191, 36, .55));
+    transform: scale(1.05);
+  }
+
+  /* ---- stat cards: deeper lift, inner highlight, sheen sweep ---- */
+  .stat-card {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .22), inset 0 1px 0 rgba(255, 255, 255, .05);
+    transition: transform .22s cubic-bezier(.34, 1.4, .64, 1), box-shadow .25s ease, border-color .25s ease;
+  }
+  .stat-card:hover {
+    transform: translateY(-4px) scale(1.012);
+    border-color: rgba(167, 139, 250, .38);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, .4), 0 0 30px rgba(124, 58, 237, .22),
+                inset 0 1px 0 rgba(255, 255, 255, .07);
+  }
+  .stat-card::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(115deg, transparent 42%, rgba(255, 255, 255, .05) 50%, transparent 58%);
+    transform: translateX(-130%);
+    transition: transform .7s ease;
+  }
+  .stat-card:hover::after { transform: translateX(130%); }
+
+  /* ---- content cards: crisper edge, quiet hover ---- */
+  .card {
+    box-shadow: 0 8px 28px rgba(0, 0, 0, .28), inset 0 1px 0 rgba(255, 255, 255, .04);
+    transition: border-color .3s ease, box-shadow .3s ease;
+  }
+  .card:hover {
+    border-color: rgba(167, 139, 250, .24);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, .32), inset 0 1px 0 rgba(255, 255, 255, .05);
+  }
+
+  /* ---- partner cards & list rows ---- */
+  .partner-card {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .22), inset 0 1px 0 rgba(255, 255, 255, .05);
+    transition: transform .22s cubic-bezier(.34, 1.4, .64, 1), box-shadow .25s ease, border-color .25s ease;
+  }
+  .partner-card:hover {
+    transform: translateY(-3px);
+    border-color: var(--line-strong);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, .38), 0 0 26px rgba(124, 58, 237, .16);
+  }
+  .rank-item, .low-item {
+    transition: transform .18s ease, border-color .2s ease, background-color .2s ease;
+  }
+  .rank-item:hover, .low-item:hover {
+    transform: translateX(4px);
+    border-color: var(--line-strong);
+    background: rgba(167, 139, 250, .05);
+  }
+
+  /* ---- tables: rounded header band, smoother row hover ---- */
+  thead tr th:first-child { border-top-left-radius: 10px; border-bottom-left-radius: 10px; }
+  thead tr th:last-child { border-top-right-radius: 10px; border-bottom-right-radius: 10px; }
+  tbody tr { transition: background-color .16s ease; }
+
+  /* ---- inputs: gentle border wake on hover ---- */
+  .field input:hover:not(:focus):not(:disabled),
+  .field select:hover:not(:focus):not(:disabled),
+  .search-box:hover:not(:focus),
+  .product-search:hover:not(:focus),
+  .month-select:hover:not(:focus) {
+    border-color: rgba(167, 139, 250, .5);
+  }
+
+  /* ---- modals: soft-focus backdrop, sprung entrance ---- */
+  .modal-overlay { backdrop-filter: blur(7px) saturate(1.15); }
+  .modal-overlay.show { animation: overlayIn .22s ease; }
+  .modal-overlay.show .modal { animation: modalIn .28s cubic-bezier(.34, 1.4, .64, 1); }
+  @keyframes overlayIn { from { opacity: 0; } }
+  @keyframes modalIn { from { opacity: 0; transform: translateY(16px) scale(.96); } }
+
+  /* ---- chart: bars glide to new heights, rise to the cursor ---- */
+  .chart .bar { transition: height .45s cubic-bezier(.22, 1, .36, 1), filter .18s ease; }
+  .chart .bar-col { transition: transform .18s ease; }
+  .chart .bar-col:hover { transform: translateY(-3px); }
+  .chart .bar-col:hover .bar { filter: brightness(1.18); }
+
+  /* ---- suggestion dropdown: slides open, rows glide ---- */
+  .suggest-box { animation: suggestIn .16s ease; }
+  @keyframes suggestIn { from { opacity: 0; transform: translateY(-6px); } }
+  .suggest-item { transition: background-color .13s ease; }
+
+  /* ---- toast: springs up instead of fading in ---- */
+  .toast {
+    transform: translateY(18px) scale(.96);
+    transition: opacity .25s ease, transform .32s cubic-bezier(.34, 1.56, .64, 1);
+  }
+  .toast.show { transform: translateY(0) scale(1); }
+
+  /* ---- small refinements ---- */
+  .date-pill, .pay-info { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04); }
+  .details-toggle:hover { transform: translateY(-1px); }
+  .khata-bills tr, .partner-item { transition: background-color .15s ease; }
+}
+
 /* ---------- product search suggestions (replaces the browser's plain datalist) ---------- */
 .suggest-holder { position: relative; }
 .suggest-box {
