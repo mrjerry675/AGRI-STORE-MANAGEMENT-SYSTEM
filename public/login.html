@@ -118,7 +118,7 @@
     .ff { opacity: .6; }
   }
 
-  /* ---------- the card ---------- */
+  /* ---------- the card: frosted glass over the night field ---------- */
   .login-page {
     position: relative; z-index: 1;
     min-height: 100vh;
@@ -127,31 +127,65 @@
   }
   .login-card {
     position: relative;
-    width: 100%; max-width: 400px;
-    background: linear-gradient(170deg, var(--card-soft), var(--card) 70%);
-    border: 1px solid var(--line-strong);
-    border-radius: 20px;
-    padding: 38px 36px 34px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, .5), 0 0 80px rgba(124, 58, 237, .22);
+    width: 100%; max-width: 408px;
+    background: linear-gradient(165deg, rgba(52, 38, 96, .55), rgba(30, 20, 62, .62) 60%);
+    backdrop-filter: blur(18px) saturate(1.25);
+    -webkit-backdrop-filter: blur(18px) saturate(1.25);
+    border: 1px solid rgba(196, 181, 253, .22);
+    border-radius: 22px;
+    padding: 40px 38px 34px;
+    box-shadow:
+      0 24px 70px rgba(0, 0, 0, .55),
+      0 0 90px rgba(124, 58, 237, .22),
+      inset 0 1px 0 rgba(255, 255, 255, .09),
+      inset 0 0 40px rgba(167, 139, 250, .04);
+    animation: cardIn .55s cubic-bezier(.26, 1.2, .48, 1) both;
+  }
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(26px) scale(.965); }
   }
   .login-card::before { /* thin gold-to-violet hairline along the top edge */
     content: ''; position: absolute; top: 0; left: 24px; right: 24px; height: 1.5px;
-    background: linear-gradient(90deg, transparent, rgba(251, 191, 36, .55), rgba(167, 139, 250, .55), transparent);
+    background: linear-gradient(90deg, transparent, rgba(251, 191, 36, .6), rgba(167, 139, 250, .6), transparent);
     border-radius: 2px;
   }
-  .login-brand { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 28px; text-align: center; }
+  .login-brand { display: flex; flex-direction: column; align-items: center; gap: 13px; margin-bottom: 30px; text-align: center; }
   .login-brand .login-crest {
-    width: 110px; height: 110px;
-    filter: drop-shadow(0 0 20px rgba(251, 191, 36, .35));
+    width: 112px; height: 112px;
+    filter: drop-shadow(0 0 22px rgba(251, 191, 36, .4));
+    animation: crestFloat 7s ease-in-out infinite;
   }
-  .login-brand h1 { font-size: 26px; }
+  @keyframes crestFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  .login-brand h1 { font-size: 28px; letter-spacing: .3px; }
   .login-brand h1 span {
     background: linear-gradient(90deg, #f1edfc, #c4b5fd);
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
-  .login-brand p { color: var(--muted); font-size: 13.5px; }
-  .login-card .field { min-width: 0; margin-bottom: 16px; }
-  .login-card .btn-primary { width: 100%; margin-top: 6px; }
+  .login-brand p { color: var(--muted); font-size: 13.5px; letter-spacing: .3px; }
+
+  /* premium form typography + glassy inputs */
+  .login-card .field { min-width: 0; margin-bottom: 17px; }
+  .login-card .field label {
+    font-size: 12.5px; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 1px; color: #b9abdf; margin-bottom: 8px;
+  }
+  .login-card .field input {
+    background: rgba(13, 8, 28, .55);
+    border-color: rgba(167, 139, 250, .32);
+    border-radius: 12px;
+    padding: 13px 16px;
+  }
+  .login-card .field input:focus {
+    background: rgba(13, 8, 28, .72);
+    box-shadow: 0 0 0 3px rgba(167, 139, 250, .2), 0 0 24px rgba(124, 58, 237, .18);
+  }
+  .login-card .btn-primary {
+    width: 100%; margin-top: 8px;
+    padding: 15px 36px; letter-spacing: .4px; border-radius: 13px;
+  }
   .login-err {
     display: none;
     background: rgba(251, 113, 133, .10);
@@ -161,8 +195,17 @@
     font-size: 13.5px; font-weight: 600;
     margin-bottom: 16px;
   }
-  .login-err.show { display: block; }
-  .login-foot { text-align: center; color: #7f72a8; font-size: 12px; margin-top: 22px; }
+  .login-err.show { display: block; animation: shake .4s ease; }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-7px); } 40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); } 80% { transform: translateX(3px); }
+  }
+  .login-foot { text-align: center; color: #7f72a8; font-size: 12px; margin-top: 24px; letter-spacing: .5px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .login-card, .login-crest, .login-err.show { animation: none; }
+  }
 </style>
 </head>
 <body>
