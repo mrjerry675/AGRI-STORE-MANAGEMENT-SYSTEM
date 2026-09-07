@@ -420,7 +420,7 @@
         <div class="exp-totals" id="mydayStats">Loading…</div>
         <button class="btn-outline" id="dayCloseBtn">🖨️ Print Day-Close Slip</button>
         <button class="btn-outline" id="waDealsBtn" style="margin-left:8px">💬 Edit WhatsApp Deals Line</button>
-        <button class="btn-outline" id="cardPctBtn" style="margin-left:8px">💳 Edit Card Discount %</button>
+        <button class="btn-outline" id="cardPctBtn" style="margin-left:8px">💳 Kisan Card Settings</button>
       </div>
 
       <div class="card">
@@ -980,6 +980,30 @@
     <div class="modal-actions">
       <button class="btn-primary" id="refSave">↩ Save Refund</button>
       <button class="btn-ghost" id="refCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="cardSetModal">
+  <div class="modal">
+    <h2 class="card-title">💳 Kisan Card Settings</h2>
+    <div class="field">
+      <label>Discount Percentage (0–90)</label>
+      <input type="number" id="csPct" min="0" max="90" step="any">
+    </div>
+    <div class="field">
+      <label>Discount Applies To</label>
+      <div id="csCats" style="display:flex;flex-direction:column;gap:9px;margin-top:6px">
+        <label style="cursor:pointer"><input type="checkbox" data-cat="Fertilizer"> 🌱 Fertilizers</label>
+        <label style="cursor:pointer"><input type="checkbox" data-cat="Seed"> 🌾 Seeds</label>
+        <label style="cursor:pointer"><input type="checkbox" data-cat="Pesticide"> 🐛 Pesticides</label>
+        <label style="cursor:pointer"><input type="checkbox" data-cat="Other"> 📦 Others</label>
+      </div>
+      <div class="hint" style="margin-top:8px">Unticked categories get NO card discount — automatic or manual.<br>Changes apply to future sales only.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-primary" id="csSave">✔ Save Settings</button>
+      <button class="btn-ghost" id="csCancel">Cancel</button>
     </div>
   </div>
 </div>

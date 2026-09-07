@@ -55,7 +55,7 @@ const SALESMAN_ALLOW = [
   ['GET', /^\/sales$/], ['POST', /^\/sales$/], ['POST', /^\/sales\/multi$/],
   ['POST', /^\/sales\/\d+\/payments$/], ['POST', /^\/sales\/\d+\/replace$/],
   ['GET', /^\/khata$/], ['POST', /^\/khata\/pay$/],
-  ['GET', /^\/settings\/wa_deals$/], ['GET', /^\/settings\/card_pct$/],
+  ['GET', /^\/settings\/wa_deals$/], ['GET', /^\/settings\/card_pct$/], ['GET', /^\/settings\/card_excluded$/],
   ['GET', /^\/cards$/],
   ['GET', /^\/replacements$/],
   ['GET', /^\/purchases$/], ['POST', /^\/purchases$/], ['POST', /^\/purchases\/\d+\/payments$/]
@@ -572,7 +572,8 @@ app.post('/api/sales', async (req, res) => {
     const wantCard = isSalesman(req)
       ? !!card
       : (req.body.kisan_card === true ? true : req.body.kisan_card === false ? false : !!card);
-    const discounted = wantCard && KISAN_CARD_PCT > 0;
+    // excluded categories never get the card discount, automatic or manual
+    const discounted = wantCard && KISAN_CARD_PCT > 0 && !KISAN_CARD_EXCLUDED.has(prod.category);
     const finalPrice = discounted ? cardPrice(sale_price) : num(sale_price);
 
     const method = payment || 'Cash';
@@ -672,6 +673,37 @@ const loadCardPct = ensureSettings.then(async () => {
   const { rows } = await pool.query(`SELECT value FROM settings WHERE key = 'card_pct'`);
   if (rows.length && num(rows[0].value) >= 0 && num(rows[0].value) <= 90) KISAN_CARD_PCT = num(rows[0].value);
 }).catch(e => console.error('card pct load:', e.message));
+
+// categories the card discount does NOT apply to (e.g. thin-margin fertilizers)
+const CARD_CATEGORIES = ['Fertilizer', 'Seed', 'Pesticide', 'Other'];
+let KISAN_CARD_EXCLUDED = new Set();
+const loadCardExcluded = ensureSettings.then(async () => {
+  const { rows } = await pool.query(`SELECT value FROM settings WHERE key = 'card_excluded'`);
+  if (rows.length) {
+    KISAN_CARD_EXCLUDED = new Set(rows[0].value.split(',').map(s => s.trim()).filter(c => CARD_CATEGORIES.includes(c)));
+  }
+}).catch(e => console.error('card excluded load:', e.message));
+
+app.get('/api/settings/card_excluded', async (req, res) => {
+  try { await loadCardExcluded; res.json({ value: [...KISAN_CARD_EXCLUDED] }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/settings/card_excluded', async (req, res) => {
+  try {
+    const list = Array.isArray(req.body.value) ? req.body.value.filter(c => CARD_CATEGORIES.includes(c)) : [];
+    await ensureSettings;
+    await pool.query(
+      `INSERT INTO settings (key, value) VALUES ('card_excluded', $1)
+       ON CONFLICT (key) DO UPDATE SET value = $1`, [list.join(',')]);
+    KISAN_CARD_EXCLUDED = new Set(list);
+    await logAction(req, 'edited', 'settings',
+      list.length
+        ? `Kisan Card discount switched OFF for: ${list.join(', ')} (no card discount on these, automatic or manual)`
+        : 'Kisan Card discount enabled for ALL categories');
+    res.json({ ok: true, value: list });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 app.get('/api/settings/card_pct', async (req, res) => {
   try { await loadCardPct; res.json({ value: KISAN_CARD_PCT }); }
@@ -919,11 +951,13 @@ app.post('/api/sales/multi', async (req, res) => {
     // Kisan Card: automatic for cardholders; the admin's per-line flags can
     // switch the discount on/off for individual lines (salesman flags ignored)
     const card = await findKisanCard(phone);
+    const catOf = {}; stats.forEach(p => { catOf[p.id] = p.category; });
     const discOf = it => {
       const want = isSalesman(req)
         ? !!card
         : (it.kisan_card === true ? true : it.kisan_card === false ? false : !!card);
-      return want && KISAN_CARD_PCT > 0;
+      // excluded categories never get the card discount, automatic or manual
+      return want && KISAN_CARD_PCT > 0 && !KISAN_CARD_EXCLUDED.has(catOf[it.product_id]);
     };
     const priceOf = it => discOf(it) ? cardPrice(it.sale_price) : num(it.sale_price);
 

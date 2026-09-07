@@ -748,13 +748,21 @@ $('saleSearchClear').addEventListener('click', () => {
 // Kisan Card holders — 10% discount, matched by phone (server applies it;
 // this cache is only for showing the discount before saving)
 let cardsCache = [];
-let cardPct = 10; // kept in step with the server's setting
+let cardPct = 10;        // kept in step with the server's settings
+let cardExcluded = [];   // categories the discount does not apply to
 async function loadCards() {
   try {
     cardsCache = await api('/api/cards');
     cardPct = (await api('/api/settings/card_pct')).value;
+    cardExcluded = (await api('/api/settings/card_excluded')).value || [];
   } catch { /* keep old */ }
 }
+const cardCatAllowed = cat => !cardExcluded.includes(cat);
+// category of the product chosen in a <select> (main line or an extra line)
+const catOfSelect = sel => {
+  const p = productCache.find(x => String(x.id) === (sel ? sel.value : ''));
+  return p ? p.category : '';
+};
 const cardFor = phone => {
   const d = String(phone || '').replace(/\D/g, '');
   return d.length >= 7 ? cardsCache.find(c => String(c.phone || '').replace(/\D/g, '') === d) : null;
@@ -984,43 +992,54 @@ $('custPhone').addEventListener('input', () => {
   input.addEventListener('blur', () => setTimeout(close, 150));
 })();
 
-// is the card discount on for a line? admin: its 💳 toggle decides;
-// salesman: automatic whenever the phone belongs to a cardholder
-const lineCardOn = tgl => isAdmin()
-  ? (tgl && tgl.classList.contains('on'))
-  : !!cardFor($('custPhone').value);
+// is the card discount on for a line? admin: its 💳 toggle decides; salesman:
+// automatic for cardholders. Excluded categories never discount either way.
+const lineCardOn = (tgl, cat) => cardCatAllowed(cat) &&
+  (isAdmin() ? (tgl && tgl.classList.contains('on')) : !!cardFor($('custPhone').value));
 
 const updSellTotal = () => {
   const factor = cardPct > 0 ? (100 - cardPct) / 100 : 1;
   let orig = 0, final = 0;
   const mainLine = (parseFloat($('sellQty').value) || 0) * (parseFloat($('sellPrice').value) || 0);
   orig += mainLine;
-  final += lineCardOn($('sellCardTgl')) && !editSaleId ? mainLine * factor : mainLine;
+  final += lineCardOn($('sellCardTgl'), catOfSelect($('sellProduct'))) && !editSaleId
+    ? mainLine * factor : mainLine;
   document.querySelectorAll('#extraItems .extra-item').forEach(row => {
     const line = (parseFloat(row.querySelector('.xQty').value) || 0) *
                  (parseFloat(row.querySelector('.xPrice').value) || 0);
     orig += line;
-    final += lineCardOn(row.querySelector('.xCardTgl')) ? line * factor : line;
+    final += lineCardOn(row.querySelector('.xCardTgl'), catOfSelect(row.querySelector('.xProduct')))
+      ? line * factor : line;
   });
   $('sellTotal').innerHTML = final < orig - 0.001
     ? `<s style="opacity:.55">${rs(orig)}</s> ${rs(final)} <span title="Kisan Card ${cardPct}% off">💳</span>`
     : rs(orig);
 };
 
-// the 💳 toggles: click to apply the card discount to that line only
-$('sellCardTgl').addEventListener('click', () => {
-  $('sellCardTgl').classList.toggle('on');
+// the 💳 toggles: click to apply the card discount to that line only;
+// products in an excluded category refuse with an explanation
+function tryToggleCard(tgl, sel) {
+  const cat = catOfSelect(sel);
+  if (cat && !cardCatAllowed(cat)) {
+    toast(`No card discount on ${cat.toLowerCase()}s — switched off in Kisan Card Settings`, true);
+    tgl.classList.remove('on');
+    return;
+  }
+  tgl.classList.toggle('on');
   updSellTotal();
-});
+}
+$('sellCardTgl').addEventListener('click', () => tryToggleCard($('sellCardTgl'), $('sellProduct')));
 $('extraItems').addEventListener('click', ev => {
   if (ev.target.classList && ev.target.classList.contains('xCardTgl')) {
-    ev.target.classList.toggle('on');
-    updSellTotal();
+    tryToggleCard(ev.target, ev.target.closest('.extra-item').querySelector('.xProduct'));
   }
 });
 function setAllCardToggles(on) {
-  $('sellCardTgl').classList.toggle('on', on);
-  document.querySelectorAll('#extraItems .xCardTgl').forEach(t => t.classList.toggle('on', on));
+  $('sellCardTgl').classList.toggle('on', on && cardCatAllowed(catOfSelect($('sellProduct'))));
+  document.querySelectorAll('#extraItems .extra-item').forEach(row => {
+    row.querySelector('.xCardTgl').classList.toggle('on',
+      on && cardCatAllowed(catOfSelect(row.querySelector('.xProduct'))));
+  });
   updSellTotal();
 }
 $('sellQty').addEventListener('input', () => { updSellTotal(); $('looseHint').textContent = ''; });
@@ -1223,6 +1242,8 @@ $('sellProduct').addEventListener('change', () => {
   $('sellLooseBtn').style.display = (p && p.packSize > 0 && !editSaleId) ? '' : 'none';
   if (p && p.packSize > 0) $('sellLooseBtn').textContent = `⚖️ Sell Loose (${p.packUnit})`;
   $('looseHint').textContent = '';
+  // switching to an excluded-category product turns its card toggle off
+  if (p && !cardCatAllowed(p.category)) { $('sellCardTgl').classList.remove('on'); updSellTotal(); }
 });
 
 // ---------- loose-quantity sales: sell part of a bag (e.g. 2 kg of a 50 kg bag)
@@ -1299,6 +1320,10 @@ $('extraItems').addEventListener('change', ev => {
       updSellTotal();
     }
     ev.target.closest('.field').querySelector('.xStock').innerHTML = stockHintHtml(p);
+    if (p && !cardCatAllowed(p.category)) {
+      ev.target.closest('.extra-item').querySelector('.xCardTgl').classList.remove('on');
+      updSellTotal();
+    }
   }
 });
 
@@ -1800,22 +1825,40 @@ function waThanks(id) {
   window.open(url, '_blank');
 }
 
-// admin edits the Kisan Card discount percentage (future sales only)
+// admin edits the Kisan Card settings: percentage + which categories it covers
 $('cardPctBtn').addEventListener('click', async () => {
   await loadCards();
-  const v = await uiPrompt('💳 Kisan Card Discount %',
-    `Current discount: ${cardPct}%. New percentage (0–90) — applies to FUTURE sales only, past sales keep their prices`,
-    String(cardPct));
-  if (v === null) return;
-  const n = parseFloat(v);
-  if (isNaN(n) || n < 0 || n > 90) { toast('Enter a number between 0 and 90', true); return; }
+  $('csPct').value = cardPct;
+  document.querySelectorAll('#csCats input[data-cat]').forEach(cb => {
+    cb.checked = !cardExcluded.includes(cb.dataset.cat);
+  });
+  $('cardSetModal').classList.add('show');
+  $('csPct').focus();
+});
+function closeCardSet() { $('cardSetModal').classList.remove('show'); }
+$('csCancel').addEventListener('click', closeCardSet);
+$('cardSetModal').addEventListener('click', ev => { if (ev.target === $('cardSetModal')) closeCardSet(); });
+
+$('csSave').addEventListener('click', async () => {
+  const n = parseFloat($('csPct').value);
+  if (isNaN(n) || n < 0 || n > 90) { toast('Percentage must be between 0 and 90', true); return; }
+  const excluded = [...document.querySelectorAll('#csCats input[data-cat]')]
+    .filter(cb => !cb.checked).map(cb => cb.dataset.cat);
   try {
-    const r = await api('/api/settings/card_pct', {
+    const r1 = await api('/api/settings/card_pct', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ value: n })
     });
-    cardPct = r.value;
-    toast(`Kisan Card discount is now ${r.value}% ✔`);
+    const r2 = await api('/api/settings/card_excluded', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: excluded })
+    });
+    cardPct = r1.value;
+    cardExcluded = r2.value;
+    toast(`Card settings saved ✔ — ${cardPct}%` +
+      (cardExcluded.length ? `, off for ${cardExcluded.map(c => c.toLowerCase() + 's').join(', ')}` : ', all categories'));
+    closeCardSet();
+    updSellTotal();
   } catch (e) { toast(e.message, true); }
 });
 
