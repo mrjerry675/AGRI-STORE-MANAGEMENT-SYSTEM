@@ -46,8 +46,11 @@ async function main() {
 
     await ins('products', b.products, ['id', 'name', 'category', 'unit', 'description', 'sale_price', 'pack_size', 'pack_unit', 'serial', 'created_at'], { sale_price: 0, pack_size: 0, pack_unit: '' });
     // legacy backups have no serials — number those products by creation order
+    // (never below the counter, so deleted products' numbers stay retired)
     await c.query(`
-      UPDATE products p SET serial = sub.rn + COALESCE((SELECT MAX(serial) FROM products WHERE serial IS NOT NULL), 0)
+      UPDATE products p SET serial = sub.rn + GREATEST(
+        COALESCE((SELECT MAX(serial) FROM products WHERE serial IS NOT NULL), 0),
+        COALESCE((SELECT value::int FROM settings WHERE key = 'last_serial'), 0))
       FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY id) rn FROM products WHERE serial IS NULL) sub
       WHERE p.id = sub.id`);
     await c.query(`
