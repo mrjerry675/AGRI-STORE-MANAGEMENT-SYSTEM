@@ -1483,6 +1483,13 @@ $('extraItems').addEventListener('change', ev => {
   }
 });
 
+// ---------- Today's Summary: collapsed by default, opened on demand ----------
+$('mydayToggle').addEventListener('click', () => {
+  const body = $('mydayBody');
+  body.hidden = !body.hidden;
+  $('mydayArrow').classList.toggle('open', !body.hidden);
+});
+
 // ---------- My Day: today's counter summary + day-close slip ----------
 let mydayCache = null;
 

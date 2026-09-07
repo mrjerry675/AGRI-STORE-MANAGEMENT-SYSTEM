@@ -716,6 +716,23 @@ tr.editing td { background: rgba(251, 191, 36, .07); }
   .dash-lower { grid-template-columns: 1fr; }
 }
 
+/* ---------- collapsible card header (Today's Summary) ---------- */
+.collapse-head {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: inherit; text-align: left;
+  border-radius: 10px;
+}
+.collapse-head:hover .card-title { color: var(--violet); }
+.collapse-head .card-title { transition: color .18s ease; }
+.collapse-arrow {
+  font-size: 20px; color: var(--muted); font-weight: 800;
+  transition: transform .22s cubic-bezier(.34, 1.4, .64, 1), color .18s ease;
+}
+.collapse-head:hover .collapse-arrow { color: var(--violet); }
+.collapse-arrow.open { transform: rotate(90deg); }
+
 /* ---------- per-line Kisan Card discount toggle on the sale form ---------- */
 .card-toggle {
   background: none;

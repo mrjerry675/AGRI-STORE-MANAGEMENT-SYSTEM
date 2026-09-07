@@ -438,11 +438,16 @@
       </div>
 
       <div class="card">
-        <h2 class="card-title">📋 My Day — Today's Summary</h2>
-        <div class="exp-totals" id="mydayStats">Loading…</div>
-        <button class="btn-outline" id="dayCloseBtn">🖨️ Print Day-Close Slip</button>
-        <button class="btn-outline" id="waDealsBtn" style="margin-left:8px">💬 Edit WhatsApp Deals Line</button>
-        <button class="btn-outline" id="cardPctBtn" style="margin-left:8px">💳 Kisan Card Settings</button>
+        <button type="button" class="collapse-head" id="mydayToggle">
+          <h2 class="card-title" style="margin-bottom:0">📋 Today's Summary</h2>
+          <span class="collapse-arrow" id="mydayArrow">▸</span>
+        </button>
+        <div id="mydayBody" hidden>
+          <div class="exp-totals" id="mydayStats" style="margin-top:16px">Loading…</div>
+          <button class="btn-outline" id="dayCloseBtn">🖨️ Print Day-Close Slip</button>
+          <button class="btn-outline" id="waDealsBtn" style="margin-left:8px">💬 Edit WhatsApp Deals Line</button>
+          <button class="btn-outline" id="cardPctBtn" style="margin-left:8px">💳 Kisan Card Settings</button>
+        </div>
       </div>
 
       <div class="card">
