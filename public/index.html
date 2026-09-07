@@ -636,6 +636,30 @@
       </div>
 
       <div class="card">
+        <div class="chart-head">
+          <h2 class="card-title">📊 Partners Overview</h2>
+          <div class="chart-controls">
+            <div class="filter-chips" id="pdashChips" style="margin-bottom:0">
+              <button class="chip active" data-period="month">📅 This Month</button>
+              <button class="chip" data-period="all">🗓️ All Time</button>
+            </div>
+            <select id="pdashMonth" class="month-select">
+              <option value="">📅 Pick a month…</option>
+            </select>
+          </div>
+        </div>
+        <div class="exp-totals" id="pdashTotals"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Partner</th><th class="r">Invested (period)</th><th class="r">Total Capital</th><th class="r">Capital Share</th><th class="r">Profit Share</th><th class="r">Expense Share</th><th class="r">Net Profit</th></tr>
+            </thead>
+            <tbody id="pdashRows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
         <h2 class="card-title">Investment Records</h2>
         <div class="table-wrap">
           <table>

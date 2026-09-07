@@ -171,7 +171,7 @@ function refresh(page) {
   if (page === 'sales') { loadProductOptions(); loadSales(); loadReplacements(); loadMyDay(); loadWaDeals(); loadCards(); if (isAdmin()) loadReturns(); }
   if (page === 'khata') { loadCards().then(loadKhata); }
   if (page === 'register') { loadProductOptions(); loadRegister(); }
-  if (page === 'partners') { loadPartners(); loadInvestments(); fillInvestProducts(); }
+  if (page === 'partners') { loadPartners(); loadInvestments(); fillInvestProducts(); loadPartnerDash(); }
   if (page === 'expenses') loadExpenses();
   if (page === 'logs') unlockAndLoadLogs();
 }
@@ -2393,6 +2393,89 @@ $('regClear').addEventListener('click', () => {
   loadRegister();
 });
 $('regPrint').addEventListener('click', () => window.print());
+
+// ---------- partners overview: the partner ledger for any period ----------
+let pdashPeriod = 'month';
+let pdashMonth = '';
+let pdashExpanded = null;
+let pdashCache = null;
+
+$('pdashChips').addEventListener('click', ev => {
+  const btn = ev.target.closest('.chip');
+  if (!btn) return;
+  pdashPeriod = btn.dataset.period;
+  pdashMonth = '';
+  $('pdashMonth').value = '';
+  document.querySelectorAll('#pdashChips .chip').forEach(c => c.classList.toggle('active', c === btn));
+  loadPartnerDash();
+});
+$('pdashMonth').addEventListener('change', () => {
+  pdashMonth = $('pdashMonth').value;
+  if (!pdashMonth) pdashPeriod = 'month';
+  document.querySelectorAll('#pdashChips .chip').forEach(c =>
+    c.classList.toggle('active', !pdashMonth && c.dataset.period === pdashPeriod));
+  loadPartnerDash();
+});
+
+async function loadPartnerDash() {
+  try {
+    // fill the month picker (same list as the dashboard's)
+    try {
+      const months = await api('/api/chart?view=months');
+      const sel = $('pdashMonth'); const v = sel.value;
+      sel.innerHTML = '<option value="">📅 Pick a month…</option>' +
+        months.slice().reverse().map(m => `<option value="${m.label}">${monthLabel(m.label)}</option>`).join('');
+      if ([...sel.options].some(o => o.value === v)) sel.value = v;
+    } catch {}
+    const qs = pdashMonth ? `?month=${pdashMonth}` : (pdashPeriod === 'month' ? '?period=month' : '');
+    pdashCache = await api('/api/partners/summary' + qs);
+    renderPartnerDash();
+  } catch (e) { toast(e.message, true); }
+}
+
+function renderPartnerDash() {
+  const d = pdashCache;
+  if (!d) return;
+  const when = d.month ? monthLabel(d.month) : 'all time';
+  $('pdashTotals').innerHTML =
+    `<span class="tot">Profit (${esc(when)}): <b style="color:${d.totalProfitShare < 0 ? 'var(--red)' : 'var(--green)'}">${rs(d.totalProfitShare)}</b></span>` +
+    `<span class="tot">Expenses: <b class="due">${rs(d.expenses)}</b></span>` +
+    `<span class="tot">Net: <b style="color:${d.totalNet < 0 ? 'var(--red)' : 'var(--green)'}">${rs(d.totalNet)}</b></span>` +
+    `<span class="tot">Total Capital: <b>${rs(d.totalCapital)}</b></span>`;
+  $('pdashRows').innerHTML = d.partners.length ? d.partners.map(p => {
+    const open = pdashExpanded === p.id;
+    return `<tr class="khata-row" onclick="togglePdash(${p.id})">
+      <td class="b">${p.items.length ? (open ? '▾ ' : '▸ ') : ''}🤝 ${esc(p.name)}</td>
+      <td class="r">${p.investedInPeriod > 0.001 ? rs(p.investedInPeriod) : '—'}</td>
+      <td class="r">${rs(p.capital)}</td>
+      <td class="r">${p.capitalSharePct.toFixed(1)}%</td>
+      <td class="r ${p.profitShare < 0 ? 'red' : 'green'}">${rs(p.profitShare)}</td>
+      <td class="r red">${rs(p.expenseShare)}</td>
+      <td class="r b ${p.net < 0 ? 'red' : 'green'}">${rs(p.net)}</td>
+    </tr>` + (open && p.items.length ? `<tr class="khata-detail"><td colspan="7">
+      <table class="khata-bills">
+        <tr><th>Product</th><th class="r">Capital In It</th><th class="r">Share</th><th class="r">Profit (${esc(when)})</th></tr>
+        ${p.items.map(it => `<tr>
+          <td>${esc(it.product)} ${badge(it.category)}</td>
+          <td class="r">${rs(it.capital)}</td>
+          <td class="r">${it.sharePct.toFixed(0)}%</td>
+          <td class="r ${it.profit < 0 ? 'red' : 'green'}">${rs(it.profit)}</td>
+        </tr>`).join('')}
+      </table></td></tr>` : '');
+  }).join('') +
+    `<tr style="font-weight:800"><td>TOTAL</td>
+      <td class="r">${rs(d.totalInvestedInPeriod)}</td>
+      <td class="r">${rs(d.totalCapital)}</td><td class="r">100%</td>
+      <td class="r">${rs(d.totalProfitShare)}</td>
+      <td class="r red">${rs(d.expenses)}</td>
+      <td class="r b ${d.totalNet < 0 ? 'red' : 'green'}">${rs(d.totalNet)}</td></tr>`
+    : '<tr><td colspan="7" class="empty-row">No active partners</td></tr>';
+}
+
+function togglePdash(id) {
+  pdashExpanded = pdashExpanded === id ? null : id;
+  renderPartnerDash();
+}
 
 // ---------- partners ----------
 async function loadPartners() {

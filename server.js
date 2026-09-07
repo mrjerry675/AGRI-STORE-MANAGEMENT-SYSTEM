@@ -1753,6 +1753,99 @@ app.get('/api/partners', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ---------- Partners overview: the partner ledger for any period ----------
+// ?period=month (current) or ?month=YYYY-MM, else all time. A month's profit
+// is split by the capital each partner had invested AS OF that month — a
+// partner who joined later correctly shows nothing for earlier months.
+// Expenses of the period are shared by the same capital ratio.
+app.get('/api/partners/summary', async (req, res) => {
+  try {
+    let range = null;
+    if (req.query.period === 'month' || /^\d{4}-\d{2}$/.test(String(req.query.month || ''))) {
+      const nw = new Date();
+      const [y, m] = req.query.month
+        ? String(req.query.month).split('-').map(Number)
+        : [nw.getFullYear(), nw.getMonth() + 1];
+      const start = `${y}-${String(m).padStart(2, '0')}-01`;
+      const end = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+      range = { start, end, label: `${y}-${String(m).padStart(2, '0')}` };
+    }
+    const params = range ? [range.start, range.end] : [];
+
+    const cost = await buildCostIndex();
+    // profit per product inside the period (current-rate costing, returns out)
+    const sq = await pool.query(`
+      SELECT s.product_id, to_char(s.sale_date, 'YYYY-MM-DD') AS d, s.qty, s.sale_price,
+             COALESCE(r.rqty, 0) AS ret
+      FROM sales s
+      LEFT JOIN (SELECT sale_id, SUM(qty) rqty FROM sale_returns GROUP BY sale_id) r ON r.sale_id = s.id
+      ${range ? 'WHERE s.sale_date >= $1::date AND s.sale_date < $2::date' : ''}`, params);
+    const profitOf = {};
+    sq.rows.forEach(s => {
+      const eff = num(s.qty) - num(s.ret);
+      profitOf[s.product_id] = (profitOf[s.product_id] || 0) +
+        eff * (num(s.sale_price) - cost.costAt(s.product_id, s.d));
+    });
+
+    // capital = investments made up to the END of the period
+    const iq = await pool.query(`
+      SELECT partner_id, product_id, to_char(inv_date, 'YYYY-MM-DD') AS d, amount FROM investments
+      ${range ? 'WHERE inv_date < $1::date' : ''}`, range ? [range.end] : []);
+    const inPeriod = r => !range || (r.d >= range.start && r.d < range.end);
+
+    const expQ = await pool.query(
+      `SELECT COALESCE(SUM(amount), 0) t FROM expenses
+       ${range ? 'WHERE exp_date >= $1::date AND exp_date < $2::date' : ''}`, params);
+    const periodExpenses = num(expQ.rows[0].t);
+
+    const partners = await pool.query('SELECT id, name FROM partners WHERE active IS NOT false ORDER BY id');
+    const prodQ = await pool.query('SELECT id, name, category FROM products');
+    const nameOf = {}, catOf = {};
+    prodQ.rows.forEach(p => { nameOf[p.id] = p.name; catOf[p.id] = p.category; });
+
+    const capByProd = {};
+    iq.rows.forEach(r => { capByProd[r.product_id] = (capByProd[r.product_id] || 0) + num(r.amount); });
+
+    const out = partners.rows.map(p => {
+      const mine = iq.rows.filter(r => r.partner_id === p.id);
+      const byProd = {};
+      mine.forEach(r => { byProd[r.product_id] = (byProd[r.product_id] || 0) + num(r.amount); });
+      const items = Object.entries(byProd).map(([pidStr, cap]) => {
+        const pid = parseInt(pidStr, 10);
+        const share = capByProd[pid] > 0 ? cap / capByProd[pid] : 0;
+        return {
+          product: nameOf[pid] || '(deleted product)', category: catOf[pid] || '',
+          capital: cap, sharePct: share * 100, profit: share * (profitOf[pid] || 0)
+        };
+      }).sort((a, b) => b.profit - a.profit || b.capital - a.capital);
+      return {
+        id: p.id, name: p.name,
+        investedInPeriod: mine.filter(inPeriod).reduce((s, r) => s + num(r.amount), 0),
+        capital: mine.reduce((s, r) => s + num(r.amount), 0),
+        profitShare: items.reduce((s, x) => s + x.profit, 0),
+        items
+      };
+    });
+    const totalCapital = out.reduce((s, p) => s + p.capital, 0);
+    out.forEach(p => {
+      p.capitalSharePct = totalCapital > 0 ? (p.capital / totalCapital) * 100 : 0;
+      p.expenseShare = totalCapital > 0 ? (p.capital / totalCapital) * periodExpenses : 0;
+      p.net = p.profitShare - p.expenseShare;
+    });
+
+    res.json({
+      period: range ? 'month' : 'all',
+      month: range ? range.label : null,
+      expenses: periodExpenses,
+      totalCapital,
+      totalInvestedInPeriod: out.reduce((s, p) => s + p.investedInPeriod, 0),
+      totalProfitShare: out.reduce((s, p) => s + p.profitShare, 0),
+      totalNet: out.reduce((s, p) => s + p.net, 0),
+      partners: out
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // A partner leaves: their final figures are frozen onto their record forever,
 // then their investment rows are released so shares pass to the remaining partners.
 app.post('/api/partners/:id/leave', async (req, res) => {
