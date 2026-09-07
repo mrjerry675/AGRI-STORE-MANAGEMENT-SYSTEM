@@ -259,8 +259,6 @@ async function loadDashboard() {
     $('stPurchSub').textContent = d.supplierPayable > 0.001
       ? `${rs(d.supplierPayable)} still to pay suppliers` : 'all purchases fully paid';
     $('stExpenses').textContent = rs(d.totalExpenses);
-    $('stNet').textContent = rs(d.netProfit);
-    $('stNet').style.color = d.netProfit < 0 ? 'var(--red)' : '';
     $('stFinal').textContent = rs(d.finalProfit);
     $('stFinal').style.color = d.finalProfit < 0 ? 'var(--red)' : 'var(--gold)';
 
