@@ -61,6 +61,10 @@
         <div>
           <h1>Dashboard <button class="icon-refresh" title="Refresh this page">🔄</button></h1>
           <p class="subtitle">Your shop's position at a glance</p>
+          <div class="filter-chips" id="dashPeriod" style="margin-top:12px;margin-bottom:0">
+            <button class="chip active" data-period="month">📅 This Month</button>
+            <button class="chip" data-period="all">🗓️ All Time</button>
+          </div>
         </div>
         <div class="date-pill" id="todayPill"></div>
       </div>
@@ -69,7 +73,7 @@
         <div class="stat-card accent-purple">
           <div class="stat-top"><span class="stat-icon bg-purple">🧮</span><span class="stat-label">Total Sales</span></div>
           <div class="stat-value" id="stSales">Rs 0</div>
-          <div class="stat-sub">everything sold so far</div>
+          <div class="stat-sub" id="stSalesSub">everything sold so far</div>
         </div>
         <div class="stat-card accent-blue">
           <div class="stat-top"><span class="stat-icon bg-blue">🚚</span><span class="stat-label">Total Purchases</span></div>
@@ -90,7 +94,7 @@
         <div class="stat-card flat">
           <div class="stat-top"><span class="stat-icon bg-blue">📈</span><span class="stat-label">Total Profit</span></div>
           <div class="stat-value" id="stProfit">Rs 0</div>
-          <div class="stat-sub">earned on everything sold so far</div>
+          <div class="stat-sub" id="stProfitSub">earned on everything sold so far</div>
         </div>
         <div class="stat-card flat">
           <div class="stat-top"><span class="stat-icon bg-gold">🪙</span><span class="stat-label">5% of Profit</span></div>
@@ -110,7 +114,7 @@
         <div class="stat-card flat">
           <div class="stat-top"><span class="stat-icon bg-orange">💸</span><span class="stat-label">Total Expenses</span></div>
           <div class="stat-value" id="stExpenses">Rs 0</div>
-          <div class="stat-sub">rent, bills, labour and other costs</div>
+          <div class="stat-sub" id="stExpSub">rent, bills, labour and other costs</div>
         </div>
         <div class="stat-card flat">
           <div class="stat-top"><span class="stat-icon bg-green">🧮</span><span class="stat-label">Net Profit</span></div>

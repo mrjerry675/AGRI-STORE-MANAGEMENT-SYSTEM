@@ -1237,14 +1237,51 @@ app.get('/api/dashboard', async (req, res) => {
       .sort((a, b) => a.soldQty - b.soldQty || b.stockValue - a.stockValue).slice(0, 3)
       .map(p => ({ name: p.name, category: p.category, soldQty: p.soldQty, unit: p.unit, remaining: p.remaining, stockValue: p.stockValue }));
 
+    // ?period=month scopes the money-flow figures to the current month.
+    // Balances stay as of today either way: stock value, udhaar outstanding
+    // and supplier payable are what IS, not what happened in a period.
+    let flow = { totalSales, totalPurchases, totalProfit, totalExpenses,
+                 cashReceived: pay.cash, bankReceived: pay.bank };
+    if (req.query.period === 'month') {
+      const m = await pool.query(`
+        WITH ret AS (SELECT sale_id, SUM(qty) rqty FROM sale_returns GROUP BY sale_id)
+        SELECT
+          (SELECT COALESCE(SUM((s.qty - COALESCE(r.rqty, 0)) * s.sale_price), 0)
+             FROM sales s LEFT JOIN ret r ON r.sale_id = s.id
+             WHERE s.sale_date >= date_trunc('month', CURRENT_DATE)) sales,
+          (SELECT COALESCE(SUM((s.qty - COALESCE(r.rqty, 0)) * (s.sale_price - ${SALE_COST_SQL})), 0)
+             FROM sales s LEFT JOIN ret r ON r.sale_id = s.id
+             WHERE s.sale_date >= date_trunc('month', CURRENT_DATE)) profit,
+          (SELECT COALESCE(SUM(qty * unit_price + transport), 0) FROM purchases
+             WHERE purchase_date >= date_trunc('month', CURRENT_DATE)) purchases,
+          (SELECT COALESCE(SUM(amount), 0) FROM expenses
+             WHERE exp_date >= date_trunc('month', CURRENT_DATE)) expenses,
+          (SELECT COALESCE(SUM(CASE WHEN method = 'Cash' THEN amount ELSE 0 END), 0)
+             FROM sale_payments WHERE pay_date >= date_trunc('month', CURRENT_DATE)) cash_in,
+          (SELECT COALESCE(SUM(CASE WHEN method <> 'Cash' THEN amount ELSE 0 END), 0)
+             FROM sale_payments WHERE pay_date >= date_trunc('month', CURRENT_DATE)) bank_in,
+          (SELECT COALESCE(SUM(CASE WHEN method = 'Cash' THEN refund ELSE 0 END), 0)
+             FROM sale_returns WHERE return_date >= date_trunc('month', CURRENT_DATE)) cash_ref,
+          (SELECT COALESCE(SUM(CASE WHEN method <> 'Cash' THEN refund ELSE 0 END), 0)
+             FROM sale_returns WHERE return_date >= date_trunc('month', CURRENT_DATE)) bank_ref`);
+      const x = m.rows[0];
+      flow = {
+        totalSales: num(x.sales), totalPurchases: num(x.purchases),
+        totalProfit: num(x.profit), totalExpenses: num(x.expenses),
+        cashReceived: num(x.cash_in) - num(x.cash_ref),
+        bankReceived: num(x.bank_in) - num(x.bank_ref)
+      };
+    }
+
     res.json({
-      stockValue, totalProfit, profitShare: totalProfit * 0.05,
-      totalExpenses, netProfit: totalProfit - totalExpenses,
+      period: req.query.period === 'month' ? 'month' : 'all',
+      stockValue, totalProfit: flow.totalProfit, profitShare: flow.totalProfit * 0.05,
+      totalExpenses: flow.totalExpenses, netProfit: flow.totalProfit - flow.totalExpenses,
       bestSellers, slowMovers,
       todaySales: num(today.rows[0].amt), todayCount: parseInt(today.rows[0].n, 10),
-      cashReceived: pay.cash, bankReceived: pay.bank,
+      cashReceived: flow.cashReceived, bankReceived: flow.bankReceived,
       creditOutstanding: pay.credit, supplierPayable: pay.payable,
-      totalSales, totalPurchases,
+      totalSales: flow.totalSales, totalPurchases: flow.totalPurchases,
       last7: last7.rows.map(r => ({ day: r.day, amt: num(r.amt), profit: num(r.profit) })),
       lowStock: stats.filter(p => p.purchasedQty > 0 && p.remaining <= 10)
         .map(p => ({ name: p.name, category: p.category, remaining: p.remaining, unit: p.unit }))

@@ -212,9 +212,25 @@ $('logsPwCancel').addEventListener('click', () => closeLogsModal(true));
 $('logsModal').addEventListener('click', ev => { if (ev.target === $('logsModal')) closeLogsModal(true); });
 
 // ---------- dashboard ----------
+// the money-flow cards default to the current month; All Time is one click away
+let dashPeriod = 'month';
+
+$('dashPeriod').addEventListener('click', ev => {
+  const btn = ev.target.closest('.chip');
+  if (!btn) return;
+  dashPeriod = btn.dataset.period;
+  document.querySelectorAll('#dashPeriod .chip').forEach(c => c.classList.toggle('active', c === btn));
+  loadDashboard();
+});
+
 async function loadDashboard() {
   try {
-    const d = await api('/api/dashboard');
+    const d = await api('/api/dashboard' + (dashPeriod === 'month' ? '?period=month' : ''));
+    const monthName = new Date().toLocaleDateString('en-GB', { month: 'long' });
+    const inPeriod = dashPeriod === 'month' ? `in ${monthName}` : 'so far';
+    $('stSalesSub').textContent = dashPeriod === 'month' ? `sold in ${monthName}` : 'everything sold so far';
+    $('stProfitSub').textContent = `earned on sales ${inPeriod}`;
+    $('stExpSub').textContent = dashPeriod === 'month' ? `expenses in ${monthName}` : 'rent, bills, labour and other costs';
     $('stStock').textContent = rs(d.stockValue);
     $('stProfit').textContent = rs(d.totalProfit);
     $('stShare').textContent = rs(d.profitShare);
