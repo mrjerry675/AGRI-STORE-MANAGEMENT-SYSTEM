@@ -712,7 +712,7 @@ function renderPurchases() {
         ? `<span class="due">${rs(r.remaining)}</span>
            <button class="pay-btn" onclick="openPay('purchases', ${r.id}, '${jsq(r.name)}', ${r.remaining})">💰 Pay</button>`
         : '<span class="paid-ok">✓ Paid</span>'}</td>
-      <td>${isAdmin() && (r.effQty === undefined || r.effQty > 0.001) ? `<button class="ret-btn" onclick="openPurRet(${r.id})" title="Return goods to the supplier">↩</button>` : ''}${isAdmin() && deletable(r.created_at) ? `<button class="del-btn" onclick="delPurchase(${r.id})">🗑️</button>` : ''}</td>
+      <td>${isAdmin() ? `<button class="edit-btn" onclick="editPurchase(${r.id})" title="Edit purchase">✏️</button>` : ''}${isAdmin() && (r.effQty === undefined || r.effQty > 0.001) ? `<button class="ret-btn" onclick="openPurRet(${r.id})" title="Return goods to the supplier">↩</button>` : ''}${isAdmin() && deletable(r.created_at) ? `<button class="del-btn" onclick="delPurchase(${r.id})">🗑️</button>` : ''}</td>
     </tr>`).join('') : `<tr><td colspan="9" class="empty-row">${purchaseSearchTerm
       ? 'No purchases matching "' + esc(purchaseSearchTerm) + '"'
       : purchaseCatFilter
@@ -729,23 +729,65 @@ $('buyTransport').addEventListener('input', updBuyTotal);
 
 const setLocked = (ids, locked) => ids.forEach(i => { $(i).disabled = locked; });
 
+// ---------- purchase edit mode (admin only): every field is editable ----------
+let editPurchaseId = null;
+
+function editPurchase(id) {
+  const r = purchaseCache.find(x => x.id === id);
+  if (!r) return;
+  editPurchaseId = id;
+  $('buyProduct').value = r.product_id;
+  $('buySearch').value = r.name;
+  $('buyDate').value = String(r.purchase_date).slice(0, 10);
+  $('buyQty').value = parseFloat(r.qty);
+  $('buyPrice').value = parseFloat(r.unit_price);
+  $('buyTransport').value = parseFloat(r.transport) > 0 ? parseFloat(r.transport) : '';
+  $('buyPaidField').style.display = 'none'; // payments live in their own ledger
+  $('buySaveBtn').textContent = '✔ Update Purchase';
+  $('buyCancel').style.display = '';
+  $('buyStockHint').innerHTML = '';
+  updBuyTotal();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function resetPurchaseForm() {
+  editPurchaseId = null;
+  $('buyQty').value = ''; $('buyPrice').value = ''; $('buyTransport').value = ''; $('buyPaid').value = '';
+  $('buySearch').value = ''; $('buyStockHint').innerHTML = '';
+  $('buyPaidField').style.display = '';
+  $('buySaveBtn').textContent = '+ Save Purchase';
+  $('buyCancel').style.display = 'none';
+  updBuyTotal();
+}
+$('buyCancel').addEventListener('click', resetPurchaseForm);
+
 $('purchaseForm').addEventListener('submit', async ev => {
   ev.preventDefault();
   if (!checkNotFuture($('buyDate').value, 'Purchase date')) return;
   if (!checkPos($('buyQty').value, 'Quantity')) return;
   if (!checkPos($('buyPrice').value, 'Unit price')) return;
   if (!checkMoneyOpt($('buyTransport').value, 'Transport charges')) return;
-  if (!checkMoneyOpt($('buyPaid').value, 'Amount paid now')) return;
   try {
-    await post('/api/purchases', {
-      product_id: $('buyProduct').value, purchase_date: $('buyDate').value,
-      qty: $('buyQty').value, unit_price: $('buyPrice').value,
-      transport: $('buyTransport').value, paid_now: $('buyPaid').value
-    });
-    toast('Purchase saved ✔');
-    $('buyQty').value = ''; $('buyPrice').value = ''; $('buyTransport').value = ''; $('buyPaid').value = '';
-    $('buySearch').value = ''; $('buyStockHint').innerHTML = '';
-    updBuyTotal();
+    if (editPurchaseId) {
+      await api('/api/purchases/' + editPurchaseId, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product_id: $('buyProduct').value, purchase_date: $('buyDate').value,
+          qty: $('buyQty').value, unit_price: $('buyPrice').value,
+          transport: $('buyTransport').value || 0
+        })
+      });
+      toast('Purchase updated ✔');
+    } else {
+      if (!checkMoneyOpt($('buyPaid').value, 'Amount paid now')) return;
+      await post('/api/purchases', {
+        product_id: $('buyProduct').value, purchase_date: $('buyDate').value,
+        qty: $('buyQty').value, unit_price: $('buyPrice').value,
+        transport: $('buyTransport').value, paid_now: $('buyPaid').value
+      });
+      toast('Purchase saved ✔');
+    }
+    resetPurchaseForm();
     refreshCurrentPage();
   } catch (e) { toast(e.message, true); }
 });

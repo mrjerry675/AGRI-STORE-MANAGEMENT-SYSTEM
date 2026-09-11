@@ -457,7 +457,72 @@ app.post('/api/purchases', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Purchases cannot be edited once recorded — delete and re-enter to correct a mistake.
+// Full edit of a purchase — ADMIN ONLY (the role wall blocks salesmen).
+// Corrections flow through everything: stock, payable, and the costing
+// timeline (sales re-cost against the corrected rates). Guards keep the
+// books coherent: quantity cannot go below what was already returned or
+// below what stock allows, and the total cannot drop below what has
+// already been paid. Every change is logged old → new.
+app.put('/api/purchases/:id', async (req, res) => {
+  try {
+    const { product_id, purchase_date, qty, unit_price, transport } = req.body;
+    if (!product_id) return res.status(400).json({ error: 'Choose a product' });
+    if (!purchase_date) return res.status(400).json({ error: 'Purchase date is required' });
+    if (num(qty) <= 0) return res.status(400).json({ error: 'Quantity must be more than 0' });
+    if (num(unit_price) < 0 || num(transport) < 0) return res.status(400).json({ error: 'Price and transport cannot be negative' });
+
+    const q = await pool.query(`
+      SELECT pu.*, to_char(pu.purchase_date, 'YYYY-MM-DD') AS pdate, p.name AS pname, p.unit,
+             COALESCE((SELECT SUM(amount) FROM purchase_payments WHERE purchase_id = pu.id), 0) AS paid,
+             COALESCE((SELECT SUM(qty) FROM purchase_returns WHERE purchase_id = pu.id), 0) AS returned,
+             COALESCE((SELECT SUM(refund) FROM purchase_returns WHERE purchase_id = pu.id), 0) AS refunded
+      FROM purchases pu JOIN products p ON p.id = pu.product_id WHERE pu.id = $1`, [req.params.id]);
+    if (!q.rows.length) return res.status(404).json({ error: 'Purchase not found' });
+    const o = q.rows[0];
+    const newPid = parseInt(product_id, 10);
+
+    if (num(qty) < num(o.returned) - 0.001) {
+      return res.status(400).json({ error: `${num(o.returned)} ${o.unit} of this purchase were already returned to the supplier — the quantity cannot go below that` });
+    }
+    const stats = await productStats();
+    const oldProd = stats.find(p => p.id === o.product_id);
+    const newProd = stats.find(p => p.id === newPid);
+    if (!newProd) return res.status(400).json({ error: 'Product not found' });
+    const oldEff = num(o.qty) - num(o.returned);
+    if (newPid === o.product_id) {
+      // shrinking the quantity cannot push the shelf below zero
+      if (oldProd.remaining + (num(qty) - num(o.qty)) < -0.001) {
+        return res.status(400).json({ error: `Only ${oldProd.remaining} ${o.unit} still in stock — the quantity cannot be reduced by more than that` });
+      }
+    } else {
+      // moving the purchase to another product removes its goods from the old one
+      if (oldProd.remaining - oldEff < -0.001) {
+        return res.status(400).json({ error: `Cannot move this purchase to another product — ${o.pname} would go into negative stock (its goods are already sold)` });
+      }
+    }
+    const newTotal = (num(qty) - num(o.returned)) * num(unit_price) + num(transport);
+    const paidNet = num(o.paid) - num(o.refunded);
+    if (newTotal < paidNet - 0.001) {
+      return res.status(400).json({ error: `${fRs(paidNet)} has already been paid on this purchase — the total cannot go below that` });
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE purchases SET product_id = $1, purchase_date = $2, qty = $3, unit_price = $4, transport = $5
+       WHERE id = $6 RETURNING *`,
+      [newPid, purchase_date, qty, unit_price || 0, transport || 0, req.params.id]);
+
+    const changes = [];
+    if (o.product_id !== newPid) changes.push(`product ${o.pname} → ${newProd.name}`);
+    if (o.pdate !== purchase_date) changes.push(`date ${o.pdate} → ${purchase_date}`);
+    if (num(o.qty) !== num(qty)) changes.push(`qty ${num(o.qty)} → ${num(qty)}`);
+    if (num(o.unit_price) !== num(unit_price)) changes.push(`unit price ${fRs(o.unit_price)} → ${fRs(unit_price)}`);
+    if (num(o.transport) !== num(transport)) changes.push(`transport ${fRs(o.transport)} → ${fRs(transport)}`);
+    if (changes.length) {
+      await logAction(req, 'edited', 'purchase', `Purchase #${req.params.id} EDITED — ${changes.join(', ')}`);
+    }
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // Record a later payment to the supplier for a purchase
 app.post('/api/purchases/:id/payments', async (req, res) => {
