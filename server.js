@@ -1744,19 +1744,17 @@ async function getPartnersData() {
       };
     });
 
-    // expenses are shared between partners in proportion to their investment.
-    // The donation pot is 5% of the OVERALL shop profit, split EQUALLY among
-    // the active partners: final = profit share - equal donation slice - expense share
+    // expenses AND the donation pot are both shared in proportion to each
+    // partner's investment. The pot is 5% of the OVERALL shop profit (the
+    // dashboard figure): final = profit share - donation share - expense share
     const expQ = await pool.query('SELECT COALESCE(SUM(amount), 0) t FROM expenses');
     const expensesTotal = num(expQ.rows[0].t);
     const totalInvestedAll = out.reduce((s, p) => s + p.totalInvested, 0);
-    const overallProfit = stats.reduce((s, p) => s + p.profit, 0);
-    const activeCount = out.filter(p => p.active).length;
-    const donationEach = activeCount > 0 ? (overallProfit * 0.05) / activeCount : 0;
+    const donationPot = stats.reduce((s, p) => s + p.profit, 0) * 0.05;
     out.forEach(p => {
       p.investShare = totalInvestedAll > 0 ? p.totalInvested / totalInvestedAll : 0;
       p.expenseShare = p.investShare * expensesTotal;
-      p.donationShare = p.active ? donationEach : 0;
+      p.donationShare = p.investShare * donationPot;
       p.netAfterExpenses = p.totalProfit - p.donationShare - p.expenseShare;
     });
     return out;
@@ -1842,13 +1840,13 @@ app.get('/api/partners/summary', async (req, res) => {
     });
     const totalCapital = out.reduce((s, p) => s + p.capital, 0);
     // the donation pot is 5% of the period's OVERALL profit (all products,
-    // same figure as the dashboard), split EQUALLY among the partners
-    const overallProfit = Object.values(profitOf).reduce((s, v) => s + v, 0);
-    const donationEach = out.length > 0 ? (overallProfit * 0.05) / out.length : 0;
+    // same figure as the dashboard), split by each partner's capital ratio —
+    // the same ratio that splits the expenses
+    const donationPot = Object.values(profitOf).reduce((s, v) => s + v, 0) * 0.05;
     out.forEach(p => {
       p.capitalSharePct = totalCapital > 0 ? (p.capital / totalCapital) * 100 : 0;
       p.expenseShare = totalCapital > 0 ? (p.capital / totalCapital) * periodExpenses : 0;
-      p.donation = donationEach;
+      p.donation = totalCapital > 0 ? (p.capital / totalCapital) * donationPot : 0;
       p.net = p.profitShare - p.donation - p.expenseShare;
     });
 
