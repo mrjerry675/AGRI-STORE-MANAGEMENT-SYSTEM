@@ -69,10 +69,6 @@ app.use('/api', (req, res, next) => {
 
 const isSalesman = req => (req.session.user && req.session.user.role) === 'salesman';
 const SALESMAN_CREDIT_LIMIT = 20000;
-// sales and purchases can only be deleted within this many days of being
-// RECORDED (created_at, so a backdated entry typed today is still fixable
-// today) — after that the books are permanent
-const DELETE_LOCK_DAYS = 3;
 
 // ---------- My Day: today's counter summary (allowed for salesmen) ----------
 app.get('/api/myday', async (req, res) => {
@@ -642,13 +638,8 @@ app.delete('/api/purchases/:id', async (req, res) => {
     const info = await pool.query(`
       SELECT to_char(pu.purchase_date, 'DD-Mon-YYYY') d, pu.qty, pu.unit_price, pu.transport,
              p.name, p.unit,
-             (CURRENT_DATE - pu.created_at::date) AS age_days,
              COALESCE((SELECT SUM(amount) FROM purchase_payments WHERE purchase_id = pu.id), 0) paid
       FROM purchases pu JOIN products p ON p.id = pu.product_id WHERE pu.id = $1`, [req.params.id]);
-    // after 3 days the register is ink, not pencil — old entries stay forever
-    if (info.rows.length && parseInt(info.rows[0].age_days, 10) > DELETE_LOCK_DAYS) {
-      return res.status(400).json({ error: `This purchase was recorded more than ${DELETE_LOCK_DAYS} days ago — old entries are locked in the books and cannot be deleted` });
-    }
     await pool.query('DELETE FROM purchases WHERE id = $1', [req.params.id]);
     if (info.rows.length) {
       const i = info.rows[0];
@@ -1352,15 +1343,10 @@ app.delete('/api/sales/:id', async (req, res) => {
     const info = await pool.query(`
       SELECT to_char(s.sale_date, 'DD-Mon-YYYY') d, s.qty, s.sale_price, s.customer_name, s.payment,
              p.name, p.unit,
-             (CURRENT_DATE - s.created_at::date) AS age_days,
              COALESCE((SELECT SUM(amount) FROM sale_payments WHERE sale_id = s.id), 0) paid,
              COALESCE((SELECT SUM(qty) FROM sale_returns WHERE sale_id = s.id), 0) returned,
              COALESCE((SELECT SUM(refund) FROM sale_returns WHERE sale_id = s.id), 0) refunded
       FROM sales s JOIN products p ON p.id = s.product_id WHERE s.id = $1`, [req.params.id]);
-    // after 3 days the register is ink, not pencil — old entries stay forever
-    if (info.rows.length && parseInt(info.rows[0].age_days, 10) > DELETE_LOCK_DAYS) {
-      return res.status(400).json({ error: `This sale was recorded more than ${DELETE_LOCK_DAYS} days ago — old entries are locked in the books and cannot be deleted` });
-    }
     await pool.query('DELETE FROM sales WHERE id = $1', [req.params.id]);
     if (info.rows.length) {
       const i = info.rows[0];

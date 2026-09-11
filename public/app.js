@@ -712,7 +712,7 @@ function renderPurchases() {
         ? `<span class="due">${rs(r.remaining)}</span>
            <button class="pay-btn" onclick="openPay('purchases', ${r.id}, '${jsq(r.name)}', ${r.remaining})">💰 Pay</button>`
         : '<span class="paid-ok">✓ Paid</span>'}</td>
-      <td>${isAdmin() ? `<button class="edit-btn" onclick="editPurchase(${r.id})" title="Edit purchase">✏️</button>` : ''}${isAdmin() && (r.effQty === undefined || r.effQty > 0.001) ? `<button class="ret-btn" onclick="openPurRet(${r.id})" title="Return goods to the supplier">↩</button>` : ''}${isAdmin() && deletable(r.created_at) ? `<button class="del-btn" onclick="delPurchase(${r.id})">🗑️</button>` : ''}</td>
+      <td>${isAdmin() ? `<button class="edit-btn" onclick="editPurchase(${r.id})" title="Edit purchase">✏️</button>` : ''}${isAdmin() && (r.effQty === undefined || r.effQty > 0.001) ? `<button class="ret-btn" onclick="openPurRet(${r.id})" title="Return goods to the supplier">↩</button>` : ''}${isAdmin() ? `<button class="del-btn" onclick="delPurchase(${r.id})">🗑️</button>` : ''}</td>
     </tr>`).join('') : `<tr><td colspan="9" class="empty-row">${purchaseSearchTerm
       ? 'No purchases matching "' + esc(purchaseSearchTerm) + '"'
       : purchaseCatFilter
@@ -1018,7 +1018,7 @@ function renderSales() {
       <td>${payLabel(r.payment)}</td>
       <td>${esc(r.customer_name)}${r.kisan_card ? ' <span title="Kisan Card — 10% discount was applied">💳</span>' : ''}</td>
       <td>${esc(r.phone)}</td>
-      <td>${r.effQty > 0.001 && withinReturnWindow(r.sale_date) ? `<button class="ret-btn" onclick="openReplace(${r.id})" title="Replace product (within 3 days)">🔁</button>` : ''}${isAdmin() && r.effQty > 0.001 ? `<button class="ret-btn" onclick="openRefund(${r.id})" title="Exception refund (admin only)">↩</button>` : ''}<button class="print-btn" onclick="printReceipt(${r.id})" title="Print receipt">🖨️</button><button class="print-btn" onclick="waThanks(${r.id})" title="Send thank-you message on WhatsApp">💬</button>${isAdmin() ? `<button class="edit-btn" onclick="editSale(${r.id})" title="Edit">✏️</button>${deletable(r.created_at) ? `<button class="del-btn" onclick="delSale(${r.id})">🗑️</button>` : ''}` : ''}</td>
+      <td>${r.effQty > 0.001 && withinReturnWindow(r.sale_date) ? `<button class="ret-btn" onclick="openReplace(${r.id})" title="Replace product (within 3 days)">🔁</button>` : ''}${isAdmin() && r.effQty > 0.001 ? `<button class="ret-btn" onclick="openRefund(${r.id})" title="Exception refund (admin only)">↩</button>` : ''}<button class="print-btn" onclick="printReceipt(${r.id})" title="Print receipt">🖨️</button><button class="print-btn" onclick="waThanks(${r.id})" title="Send thank-you message on WhatsApp">💬</button>${isAdmin() ? `<button class="edit-btn" onclick="editSale(${r.id})" title="Edit">✏️</button><button class="del-btn" onclick="delSale(${r.id})">🗑️</button>` : ''}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="11" class="empty-row">${saleSearchTerm
       ? 'No sales matching "' + esc(saleSearchTerm) + '"'
@@ -1713,16 +1713,6 @@ const RETURN_DAYS = 3; // shop policy: returns accepted within 3 days of the sal
 function withinReturnWindow(saleDate) {
   const diff = (new Date(todayISO() + 'T00:00:00') - new Date(String(saleDate).slice(0, 10) + 'T00:00:00')) / 86400000;
   return diff <= RETURN_DAYS;
-}
-
-// entries recorded more than 3 days ago are locked in the books — no delete
-// button is shown (and the server refuses anyway)
-function deletable(createdAt) {
-  const d = new Date(createdAt);
-  if (isNaN(d)) return true;
-  const entryDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const today = new Date(); const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  return (t0 - entryDay) / 86400000 <= RETURN_DAYS;
 }
 
 // ---------- replacements: no refunds, exchange within 3 days ----------
