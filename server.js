@@ -286,7 +286,7 @@ async function productStats() {
     const avgCost = cost.currentCost(a.id); // "current cost" = today's rate
     const remaining = a.purchasedQty - a.soldQty;
     return { ...a, avgCost, remaining, stockValue: remaining * avgCost };
-  }).sort((x, y) => x.name.localeCompare(y.name));
+  }).sort((x, y) => (x.serial || 0) - (y.serial || 0)); // the numbered register order: #1, #2, #3…
 }
 
 // ---------- Products ----------
