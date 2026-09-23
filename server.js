@@ -997,10 +997,14 @@ app.get('/api/supplier-khata', async (req, res) => {
       const effTotal = effQty * num(r.unit_price) + num(r.transport);
       const paidNet = num(r.paid) - num(r.refunded);
       const due = effTotal - paidNet;
-      g.purchaseCount++;
-      g.totalBought += effTotal;
-      g.totalPaid += paidNet;
+      // the totals are the DEBT ledger, not overall trade: only bills still
+      // owing count, each net of goods the dealer took back — so the figures
+      // shrink as stock goes back and as bills get paid off, and a settled
+      // bill drops out entirely
       if (due > 0.001) {
+        g.purchaseCount++;
+        g.totalBought += effTotal;
+        g.totalPaid += paidNet;
         g.due += due;
         g.unpaid.push({
           id: r.id, date: r.purchase_date, product: r.product_name, unit: r.unit,
