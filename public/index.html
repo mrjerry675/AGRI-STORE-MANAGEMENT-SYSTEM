@@ -279,6 +279,10 @@
             <div class="hint" id="buyStockHint"></div>
           </div>
           <div class="field">
+            <label>Dealer / Supplier (optional)</label>
+            <input type="text" id="buySupplier" placeholder="e.g. Sarsabz Traders" autocomplete="off">
+          </div>
+          <div class="field">
             <label>Purchase Date</label>
             <input type="date" id="buyDate" required>
           </div>
@@ -322,7 +326,7 @@
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>Date</th><th>Product</th><th class="r">Quantity</th><th class="r">Unit Price</th><th class="r">Transport</th><th class="r">Total Amount</th><th class="r">Paid</th><th class="r">Remaining</th><th></th></tr>
+              <tr><th>Date</th><th>Product</th><th>Dealer</th><th class="r">Quantity</th><th class="r">Unit Price</th><th class="r">Transport</th><th class="r">Total Amount</th><th class="r">Paid</th><th class="r">Remaining</th><th></th></tr>
             </thead>
             <tbody id="purchaseRows"></tbody>
           </table>
@@ -518,13 +522,22 @@
         <div class="filter-chips" id="khataChips">
           <button class="chip active" data-view="due">📕 With Dues</button>
           <button class="chip" data-view="all">👥 All Customers</button>
+          <button class="chip" data-view="suppliers" id="khataSupChip">🏭 Dealer Dues</button>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap" id="khataCustWrap">
           <table>
             <thead>
               <tr><th>Customer</th><th>Phone</th><th>Address</th><th class="r">Bills</th><th class="r">Total Bought</th><th class="r">Paid</th><th class="r">Outstanding</th><th>Last Sale</th><th></th></tr>
             </thead>
             <tbody id="khataRows"></tbody>
+          </table>
+        </div>
+        <div class="table-wrap" id="khataSupWrap" style="display:none">
+          <table>
+            <thead>
+              <tr><th>Dealer</th><th class="r">Purchases</th><th class="r">Total Bought</th><th class="r">Paid</th><th class="r">To Pay</th><th>Last Purchase</th><th></th></tr>
+            </thead>
+            <tbody id="khataSupRows"></tbody>
           </table>
         </div>
       </div>

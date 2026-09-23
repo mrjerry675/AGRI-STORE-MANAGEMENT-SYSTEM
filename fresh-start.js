@@ -37,7 +37,7 @@ async function buildBackup() {
   const q = s => pool.query(s).catch(() => ({ rows: [] }));
   const [products, purchases, sales, salePayments, purchasePayments, partners, investments, expenses, saleReturns, logs, replacements, kisanCards, settings, purchaseReturns] = await Promise.all([
     q('SELECT * FROM products ORDER BY id'),
-    q(`SELECT id, product_id, to_char(purchase_date, 'YYYY-MM-DD') AS purchase_date, qty, unit_price, transport, created_at FROM purchases ORDER BY id`),
+    q(`SELECT id, product_id, to_char(purchase_date, 'YYYY-MM-DD') AS purchase_date, qty, unit_price, transport, supplier, created_at FROM purchases ORDER BY id`),
     q(`SELECT id, product_id, to_char(sale_date, 'YYYY-MM-DD') AS sale_date, qty, sale_price, payment, customer_name, phone, address, receipt_group, replaced_note, kisan_card, orig_price, created_at FROM sales ORDER BY id`),
     q(`SELECT id, sale_id, to_char(pay_date, 'YYYY-MM-DD') AS pay_date, amount, method, created_at FROM sale_payments ORDER BY id`),
     q(`SELECT id, purchase_id, to_char(pay_date, 'YYYY-MM-DD') AS pay_date, amount, method, created_at FROM purchase_payments ORDER BY id`),

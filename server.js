@@ -421,6 +421,7 @@ app.get('/api/purchases', async (req, res) => {
 app.post('/api/purchases', async (req, res) => {
   try {
     const { product_id, purchase_date, qty, unit_price, transport, paid_now } = req.body;
+    const supplier = String(req.body.supplier || '').trim();
     if (!product_id) return res.status(400).json({ error: 'Choose a product' });
     if (!purchase_date) return res.status(400).json({ error: 'Purchase date is required' });
     if (num(qty) <= 0) return res.status(400).json({ error: 'Quantity must be more than 0' });
@@ -437,8 +438,8 @@ app.post('/api/purchases', async (req, res) => {
     if (paid > total) return res.status(400).json({ error: `Paid amount cannot be more than the total (Rs ${total})` });
 
     const { rows } = await pool.query(
-      'INSERT INTO purchases (product_id, purchase_date, qty, unit_price, transport) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [product_id, purchase_date, qty, unit_price || 0, transport || 0]);
+      'INSERT INTO purchases (product_id, purchase_date, qty, unit_price, transport, supplier) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [product_id, purchase_date, qty, unit_price || 0, transport || 0, supplier]);
     if (paid > 0) {
       await pool.query(
         'INSERT INTO purchase_payments (purchase_id, pay_date, amount, method) VALUES ($1, $2, $3, $4)',
@@ -448,6 +449,7 @@ app.post('/api/purchases', async (req, res) => {
     await logAction(req, 'created', 'purchase',
       `Purchase #${rows[0].id} saved: ${num(qty)} ${pn.rows[0].unit} ${pn.rows[0].name} @ ${fRs(unit_price)}` +
       (num(transport) > 0 ? ` + ${fRs(transport)} transport` : '') +
+      (supplier ? ` from ${supplier}` : '') +
       ` = ${fRs(total)} (paid now ${fRs(paid)}${paid < total ? `, due ${fRs(total - paid)}` : ''})`);
     res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -462,6 +464,7 @@ app.post('/api/purchases', async (req, res) => {
 app.put('/api/purchases/:id', async (req, res) => {
   try {
     const { product_id, purchase_date, qty, unit_price, transport } = req.body;
+    const supplier = String(req.body.supplier || '').trim();
     if (!product_id) return res.status(400).json({ error: 'Choose a product' });
     if (!purchase_date) return res.status(400).json({ error: 'Purchase date is required' });
     if (num(qty) <= 0) return res.status(400).json({ error: 'Quantity must be more than 0' });
@@ -503,9 +506,9 @@ app.put('/api/purchases/:id', async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `UPDATE purchases SET product_id = $1, purchase_date = $2, qty = $3, unit_price = $4, transport = $5
-       WHERE id = $6 RETURNING *`,
-      [newPid, purchase_date, qty, unit_price || 0, transport || 0, req.params.id]);
+      `UPDATE purchases SET product_id = $1, purchase_date = $2, qty = $3, unit_price = $4, transport = $5, supplier = $6
+       WHERE id = $7 RETURNING *`,
+      [newPid, purchase_date, qty, unit_price || 0, transport || 0, supplier, req.params.id]);
 
     const changes = [];
     if (o.product_id !== newPid) changes.push(`product ${o.pname} → ${newProd.name}`);
@@ -513,6 +516,7 @@ app.put('/api/purchases/:id', async (req, res) => {
     if (num(o.qty) !== num(qty)) changes.push(`qty ${num(o.qty)} → ${num(qty)}`);
     if (num(o.unit_price) !== num(unit_price)) changes.push(`unit price ${fRs(o.unit_price)} → ${fRs(unit_price)}`);
     if (num(o.transport) !== num(transport)) changes.push(`transport ${fRs(o.transport)} → ${fRs(transport)}`);
+    if (String(o.supplier || '').trim() !== supplier) changes.push(`dealer ${String(o.supplier || '').trim() || '(none)'} → ${supplier || '(none)'}`);
     if (changes.length) {
       await logAction(req, 'edited', 'purchase', `Purchase #${req.params.id} EDITED — ${changes.join(', ')}`);
     }
@@ -956,6 +960,60 @@ async function buildKhata() {
 app.get('/api/khata', async (req, res) => {
   try { res.json(await buildKhata()); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// The dealer-side khata: what WE owe, grouped by dealer. A purchase counts
+// net of supplier returns (goods the dealer took back are cut from the bill),
+// so the grand total here always equals the dashboard's "still to pay
+// suppliers". ADMIN ONLY — it exposes purchase costs (the role wall blocks
+// salesmen because this path is not on their allowlist).
+app.get('/api/supplier-khata', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT pu.id, to_char(pu.purchase_date, 'YYYY-MM-DD') AS purchase_date,
+             pu.qty, pu.unit_price, pu.transport, pu.supplier,
+             p.name AS product_name, p.unit,
+             COALESCE(pp.paid, 0) AS paid,
+             COALESCE(pr.rqty, 0) AS returned,
+             COALESCE(pr.refunded, 0) AS refunded
+      FROM purchases pu
+      JOIN products p ON p.id = pu.product_id
+      LEFT JOIN (SELECT purchase_id, SUM(amount) paid FROM purchase_payments GROUP BY purchase_id) pp
+        ON pp.purchase_id = pu.id
+      LEFT JOIN (SELECT purchase_id, SUM(qty) rqty, SUM(refund) refunded FROM purchase_returns GROUP BY purchase_id) pr
+        ON pr.purchase_id = pu.id
+      ORDER BY pu.purchase_date, pu.id`);
+
+    const groups = {};
+    rows.forEach(r => {
+      const name = String(r.supplier || '').trim();
+      const key = name.toLowerCase();
+      const g = groups[key] || (groups[key] = {
+        key, name: name || '(No dealer name)',
+        purchaseCount: 0, totalBought: 0, totalPaid: 0, due: 0,
+        lastPurchase: null, unpaid: []
+      });
+      const effQty = num(r.qty) - num(r.returned);
+      const effTotal = effQty * num(r.unit_price) + num(r.transport);
+      const paidNet = num(r.paid) - num(r.refunded);
+      const due = effTotal - paidNet;
+      g.purchaseCount++;
+      g.totalBought += effTotal;
+      g.totalPaid += paidNet;
+      if (due > 0.001) {
+        g.due += due;
+        g.unpaid.push({
+          id: r.id, date: r.purchase_date, product: r.product_name, unit: r.unit,
+          bought: num(r.qty), returned: num(r.returned),
+          total: effTotal, paid: paidNet, due
+        });
+      }
+      g.lastPurchase = r.purchase_date; // rows come oldest-first, last write wins
+    });
+
+    const dealers = Object.values(groups).sort((a, b) => b.due - a.due || a.name.localeCompare(b.name));
+    res.json({ grand: dealers.reduce((s, d) => s + d.due, 0), dealers });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Collect one payment from a customer and spread it over their unpaid bills,
@@ -2225,7 +2283,7 @@ async function buildBackup() {
   // on any computer, whatever its timezone is set to
   const [products, purchases, sales, salePayments, purchasePayments, partners, investments, expenses, saleReturns, logs, replacements] = await Promise.all([
     pool.query('SELECT * FROM products ORDER BY id'),
-    pool.query(`SELECT id, product_id, to_char(purchase_date, 'YYYY-MM-DD') AS purchase_date, qty, unit_price, transport, created_at FROM purchases ORDER BY id`),
+    pool.query(`SELECT id, product_id, to_char(purchase_date, 'YYYY-MM-DD') AS purchase_date, qty, unit_price, transport, supplier, created_at FROM purchases ORDER BY id`),
     pool.query(`SELECT id, product_id, to_char(sale_date, 'YYYY-MM-DD') AS sale_date, qty, sale_price, payment, customer_name, phone, address, receipt_group, replaced_note, kisan_card, orig_price, created_at FROM sales ORDER BY id`),
     pool.query(`SELECT id, sale_id, to_char(pay_date, 'YYYY-MM-DD') AS pay_date, amount, method, created_at FROM sale_payments ORDER BY id`),
     pool.query(`SELECT id, purchase_id, to_char(pay_date, 'YYYY-MM-DD') AS pay_date, amount, method, created_at FROM purchase_payments ORDER BY id`),
@@ -2342,7 +2400,7 @@ async function restoreData(b) {
     await ins('partners', b.partners,
       ['id', 'name', 'active', 'left_date', 'final_invested', 'final_profit', 'final_expense_share', 'final_net', 'created_at'],
       { active: true, final_invested: 0, final_profit: 0, final_expense_share: 0, final_net: 0 });
-    await ins('purchases', b.purchases, ['id', 'product_id', 'purchase_date', 'qty', 'unit_price', 'transport', 'created_at'], { transport: 0 });
+    await ins('purchases', b.purchases, ['id', 'product_id', 'purchase_date', 'qty', 'unit_price', 'transport', 'supplier', 'created_at'], { transport: 0, supplier: '' });
     await ins('sales', b.sales, ['id', 'product_id', 'sale_date', 'qty', 'sale_price', 'payment', 'customer_name', 'phone', 'address', 'receipt_group', 'replaced_note', 'kisan_card', 'orig_price', 'created_at'],
       { payment: 'Cash', customer_name: '', phone: '', address: '', replaced_note: '', kisan_card: false, orig_price: 0 });
     await ins('kisan_cards', b.kisan_cards, ['id', 'name', 'phone', 'created_at']);

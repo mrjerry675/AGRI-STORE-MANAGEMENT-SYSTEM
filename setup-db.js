@@ -197,6 +197,7 @@ async function main() {
     ALTER TABLE sales     ADD COLUMN IF NOT EXISTS kisan_card BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE sales     ADD COLUMN IF NOT EXISTS orig_price NUMERIC NOT NULL DEFAULT 0;
     ALTER TABLE products  ADD COLUMN IF NOT EXISTS serial INTEGER;
+    ALTER TABLE purchases ADD COLUMN IF NOT EXISTS supplier TEXT NOT NULL DEFAULT '';
     UPDATE products p SET serial = sub.rn + GREATEST(
         COALESCE((SELECT MAX(serial) FROM products WHERE serial IS NOT NULL), 0),
         COALESCE((SELECT value::int FROM settings WHERE key = 'last_serial'), 0))

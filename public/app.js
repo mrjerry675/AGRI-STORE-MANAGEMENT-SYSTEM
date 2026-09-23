@@ -697,11 +697,13 @@ function renderPurchases() {
   if (purchaseSearchTerm) {
     rows = rows.filter(r =>
       r.name.toLowerCase().includes(purchaseSearchTerm) ||
-      r.category.toLowerCase().includes(purchaseSearchTerm));
+      r.category.toLowerCase().includes(purchaseSearchTerm) ||
+      (r.supplier || '').toLowerCase().includes(purchaseSearchTerm));
   }
   $('purchaseRows').innerHTML = rows.length ? rows.map(r => `<tr>
       <td>${fmtDate(r.purchase_date)}</td>
       <td class="b">${esc(r.name)} ${badge(r.category)}</td>
+      <td>${esc(r.supplier || '')}</td>
       <td class="r">${qty(r.effQty !== undefined ? r.effQty : r.qty)} ${esc(r.unit)}${r.returned > 0
         ? ` <span class="ret-note">↩ ${qty(r.returned)} ret.</span>` : ''}</td>
       <td class="r">${rs(r.unit_price)}</td>
@@ -713,7 +715,7 @@ function renderPurchases() {
            <button class="pay-btn" onclick="openPay('purchases', ${r.id}, '${jsq(r.name)}', ${r.remaining})">💰 Pay</button>`
         : '<span class="paid-ok">✓ Paid</span>'}</td>
       <td>${isAdmin() ? `<button class="edit-btn" onclick="editPurchase(${r.id})" title="Edit purchase">✏️</button>` : ''}${isAdmin() && (r.effQty === undefined || r.effQty > 0.001) ? `<button class="ret-btn" onclick="openPurRet(${r.id})" title="Return goods to the supplier">↩</button>` : ''}${isAdmin() ? `<button class="del-btn" onclick="delPurchase(${r.id})">🗑️</button>` : ''}</td>
-    </tr>`).join('') : `<tr><td colspan="9" class="empty-row">${purchaseSearchTerm
+    </tr>`).join('') : `<tr><td colspan="10" class="empty-row">${purchaseSearchTerm
       ? 'No purchases matching "' + esc(purchaseSearchTerm) + '"'
       : purchaseCatFilter
         ? 'No ' + esc(purchaseCatFilter.toLowerCase()) + ' purchases yet'
@@ -739,6 +741,7 @@ function editPurchase(id) {
   $('buyProduct').value = r.product_id;
   $('buySearch').value = r.name;
   $('buyDate').value = String(r.purchase_date).slice(0, 10);
+  $('buySupplier').value = r.supplier || '';
   $('buyQty').value = parseFloat(r.qty);
   $('buyPrice').value = parseFloat(r.unit_price);
   $('buyTransport').value = parseFloat(r.transport) > 0 ? parseFloat(r.transport) : '';
@@ -753,7 +756,7 @@ function editPurchase(id) {
 function resetPurchaseForm() {
   editPurchaseId = null;
   $('buyQty').value = ''; $('buyPrice').value = ''; $('buyTransport').value = ''; $('buyPaid').value = '';
-  $('buySearch').value = ''; $('buyStockHint').innerHTML = '';
+  $('buySearch').value = ''; $('buySupplier').value = ''; $('buyStockHint').innerHTML = '';
   $('buyPaidField').style.display = '';
   $('buySaveBtn').textContent = '+ Save Purchase';
   $('buyCancel').style.display = 'none';
@@ -774,7 +777,8 @@ $('purchaseForm').addEventListener('submit', async ev => {
         body: JSON.stringify({
           product_id: $('buyProduct').value, purchase_date: $('buyDate').value,
           qty: $('buyQty').value, unit_price: $('buyPrice').value,
-          transport: $('buyTransport').value || 0
+          transport: $('buyTransport').value || 0,
+          supplier: $('buySupplier').value
         })
       });
       toast('Purchase updated ✔');
@@ -783,7 +787,8 @@ $('purchaseForm').addEventListener('submit', async ev => {
       await post('/api/purchases', {
         product_id: $('buyProduct').value, purchase_date: $('buyDate').value,
         qty: $('buyQty').value, unit_price: $('buyPrice').value,
-        transport: $('buyTransport').value, paid_now: $('buyPaid').value
+        transport: $('buyTransport').value, paid_now: $('buyPaid').value,
+        supplier: $('buySupplier').value
       });
       toast('Purchase saved ✔');
     }
@@ -2295,19 +2300,30 @@ let khataSearchTerm = '';
 let khataExpanded = null;  // key of the customer whose bills are unfolded
 let khataPayTarget = null;
 
+let supKhata = { grand: 0, dealers: [] };
+let supExpanded = null;
+
 async function loadKhata() {
   try {
+    // the dealer side shows purchase costs, so only the admin gets it
+    $('khataSupChip').style.display = isAdmin() ? '' : 'none';
+    if (!isAdmin() && khataView === 'suppliers') khataView = 'due';
     khataCache = await api('/api/khata');
-    const withDues = khataCache.filter(c => c.due > 0.001);
-    const totalDue = withDues.reduce((s, c) => s + c.due, 0);
-    $('khataTotalsPill').textContent = withDues.length
-      ? `${withDues.length} customer${withDues.length === 1 ? '' : 's'} owe ${rs(totalDue)}`
-      : 'No udhaar outstanding ✔';
+    if (isAdmin()) supKhata = await api('/api/supplier-khata');
     renderKhata();
   } catch (e) { toast(e.message, true); }
 }
 
 function renderKhata() {
+  const supView = khataView === 'suppliers';
+  $('khataCustWrap').style.display = supView ? 'none' : '';
+  $('khataSupWrap').style.display = supView ? '' : 'none';
+  if (supView) { renderSupKhata(); return; }
+  const withDues = khataCache.filter(c => c.due > 0.001);
+  const totalDue = withDues.reduce((s, c) => s + c.due, 0);
+  $('khataTotalsPill').textContent = withDues.length
+    ? `${withDues.length} customer${withDues.length === 1 ? '' : 's'} owe ${rs(totalDue)}`
+    : 'No udhaar outstanding ✔';
   let rows = khataView === 'due' ? khataCache.filter(c => c.due > 0.001) : khataCache;
   if (khataSearchTerm) {
     rows = rows.filter(c =>
@@ -2348,6 +2364,46 @@ function renderKhata() {
 
 function toggleKhata(key) {
   khataExpanded = khataExpanded === key ? null : key;
+  renderKhata();
+}
+
+// ---------- dealer dues: what WE owe, net of goods the dealer took back ----------
+function renderSupKhata() {
+  const dealersWithDue = supKhata.dealers.filter(d => d.due > 0.001);
+  $('khataTotalsPill').textContent = supKhata.grand > 0.001
+    ? `Total to pay dealers: ${rs(supKhata.grand)}`
+    : 'Nothing owed to dealers ✔';
+  let rows = dealersWithDue;
+  if (khataSearchTerm) rows = rows.filter(d => d.name.toLowerCase().includes(khataSearchTerm));
+  $('khataSupRows').innerHTML = rows.length ? rows.map(d => {
+    const open = supExpanded === d.key;
+    return `<tr class="khata-row" onclick="toggleSupKhata('${jsq(d.key)}')">
+      <td class="b">${d.unpaid.length ? (open ? '▾ ' : '▸ ') : ''}${esc(d.name)}</td>
+      <td class="r">${d.purchaseCount}</td>
+      <td class="r">${rs(d.totalBought)}</td>
+      <td class="r">${rs(d.totalPaid)}</td>
+      <td class="r"><span class="due b">${rs(d.due)}</span></td>
+      <td>${fmtDate(d.lastPurchase)}</td>
+      <td></td>
+    </tr>` + (open && d.unpaid.length ? `<tr class="khata-detail"><td colspan="7">
+      <table class="khata-bills">
+        <tr><th>Date</th><th>Purchase</th><th>Product</th><th class="r">Bought</th><th class="r">Taken Back</th><th class="r">Bill (net)</th><th class="r">Paid</th><th class="r">To Pay</th><th></th></tr>
+        ${d.unpaid.map(b => `<tr>
+          <td>${fmtDate(b.date)}</td><td class="b">#${b.id}</td><td>${esc(b.product)}</td>
+          <td class="r">${qty(b.bought)} ${esc(b.unit)}</td>
+          <td class="r">${b.returned > 0 ? `<span class="ret-note">↩ ${qty(b.returned)} ${esc(b.unit)}</span>` : '—'}</td>
+          <td class="r">${rs(b.total)}</td><td class="r">${rs(b.paid)}</td>
+          <td class="r"><span class="due">${rs(b.due)}</span></td>
+          <td><button class="pay-btn" onclick="event.stopPropagation(); openPay('purchases', ${b.id}, '${jsq(b.product)}', ${b.due})">💰 Pay</button></td>
+        </tr>`).join('')}
+      </table></td></tr>` : '');
+  }).join('') : `<tr><td colspan="7" class="empty-row">${khataSearchTerm
+    ? 'No dealer matching "' + esc(khataSearchTerm) + '"'
+    : 'Nothing owed to any dealer — all purchases are paid ✔'}</td></tr>`;
+}
+
+function toggleSupKhata(key) {
+  supExpanded = supExpanded === key ? null : key;
   renderKhata();
 }
 

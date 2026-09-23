@@ -61,7 +61,7 @@ async function main() {
     await ins('partners', b.partners,
       ['id', 'name', 'active', 'left_date', 'final_invested', 'final_profit', 'final_expense_share', 'final_net', 'created_at'],
       { active: true, final_invested: 0, final_profit: 0, final_expense_share: 0, final_net: 0 });
-    await ins('purchases', b.purchases, ['id', 'product_id', 'purchase_date', 'qty', 'unit_price', 'transport', 'created_at'], { transport: 0 });
+    await ins('purchases', b.purchases, ['id', 'product_id', 'purchase_date', 'qty', 'unit_price', 'transport', 'supplier', 'created_at'], { transport: 0, supplier: '' });
     await ins('sales', b.sales, ['id', 'product_id', 'sale_date', 'qty', 'sale_price', 'payment', 'customer_name', 'phone', 'address', 'receipt_group', 'replaced_note', 'kisan_card', 'orig_price', 'created_at'],
       { payment: 'Cash', customer_name: '', phone: '', address: '', replaced_note: '', kisan_card: false, orig_price: 0 });
     await ins('kisan_cards', b.kisan_cards, ['id', 'name', 'phone', 'created_at']);
