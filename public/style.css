@@ -348,7 +348,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .live-total span { font-size: 23px; font-weight: 800; color: var(--gold); }
 
 /* ============ TABLES ============ */
-.table-wrap { overflow-x: auto; }
+/* every table scrolls inside its own frame with the heading row pinned on
+   top, so column names stay visible however far down the history goes */
+.table-wrap { overflow: auto; max-height: 72vh; }
+.table-wrap thead { position: sticky; top: 0; z-index: 2; }
+.table-wrap thead th { background: #2b2050; }
 table { width: 100%; border-collapse: collapse; font-size: 16px; }
 thead th {
   background: rgba(124, 58, 237, .16);
@@ -701,7 +705,8 @@ tr.editing td { background: rgba(251, 191, 36, .07); }
   h1, .card-title, td.b, .low-item b { color: #000 !important; }
   .subtitle { color: #444 !important; }
   .card { background: #fff !important; border: none; box-shadow: none; padding: 0; }
-  .register-wrap { max-height: none; overflow: visible; }
+  .table-wrap, .register-wrap, .logs-wrap { max-height: none; overflow: visible; }
+  .table-wrap thead { position: static; }
   table { font-size: 10px; }
   thead th { background: #f0f0f0 !important; color: #333 !important; }
   tbody td { color: #000 !important; border-color: #ddd; white-space: normal; padding: 5px 6px; }
